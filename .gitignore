@@ -1,9 +1,12 @@
 node_modules*
-extracted 
+extracted
 *.tgz
 express
 tests
 
 go-package-lock.json
-bun.lock 
+bun.lock
 data
+
+# Build artifacts
+go-npm
