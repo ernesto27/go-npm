@@ -96,6 +96,15 @@ Uninstall a package from `node_modules` or from global installation.
 **Flags:**
 - `-g, --global` - Uninstall from global installation
 
+### Cache
+
+Manage the package cache.
+
+```bash
+# Clear all cached packages and manifests
+./go-npm cache rm
+```
+
 ## Development
 
 ### Testing

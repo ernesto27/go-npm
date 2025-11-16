@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -48,4 +49,22 @@ func New() (*Config, error) {
 		GlobalPackageJSON: filepath.Join(globalDir, "package.json"),
 		GlobalLockFile:    filepath.Join(globalDir, "go-package-lock.json"),
 	}, nil
+}
+
+func (c *Config) ClearCache() error {
+	cacheDirs := []string{
+		c.ManifestDir,
+		c.PackagesDir,
+		filepath.Join(c.BaseDir, "etag"),
+	}
+
+	for _, dir := range cacheDirs {
+		if err := os.RemoveAll(dir); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove %s: %w", dir, err)
+			}
+		}
+	}
+
+	return nil
 }
