@@ -186,10 +186,25 @@ func TestCreateBinDirectory(t *testing.T) {
 		{
 			name: "Error when path is read-only",
 			setupFunc: func(t *testing.T) *BinLinker {
+				// Skip this test if running as root or in environments where
+				// permissions aren't enforced (e.g., Docker, certain CI systems)
+				if os.Getuid() == 0 {
+					t.Skip("Skipping permission test when running as root")
+				}
+
 				tmpDir := t.TempDir()
 				readOnlyDir := filepath.Join(tmpDir, "readonly")
 				err := os.Mkdir(readOnlyDir, 0444)
 				assert.NoError(t, err)
+
+				// Verify the directory is actually read-only before proceeding
+				testFile := filepath.Join(readOnlyDir, "test")
+				if err := os.WriteFile(testFile, []byte("test"), 0644); err == nil {
+					// Cleanup test file and skip test
+					os.Remove(testFile)
+					t.Skip("Skipping permission test - filesystem doesn't enforce read-only permissions")
+				}
+
 				return NewBinLinker(readOnlyDir)
 			},
 			expectError: true,
