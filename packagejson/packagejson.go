@@ -12,10 +12,11 @@ import (
 )
 
 type Dependency struct {
-	Name    string
-	Version string
-	Etag    string
-	Nested  bool
+	Name       string
+	ActualName string
+	Version    string
+	Etag       string
+	Nested     bool
 }
 
 type PackageJSON struct {

@@ -74,6 +74,16 @@ func (v *VersionInfo) getVersionCaret(version string, npmPackage *NPMPackage) st
 			majorCandidate := semver.Major(v2)
 
 			if majorBase == majorCandidate {
+				// For major version 0, caret behaves like tilde (also match minor)
+				// ^0.2.3 means >=0.2.3 <0.3.0
+				if majorBase == "v0" {
+					minorBase := semver.MajorMinor(v1)
+					minorCandidate := semver.MajorMinor(v2)
+					if minorBase != minorCandidate {
+						continue
+					}
+				}
+
 				if bestSemver == "" || semver.Compare(v2, bestSemver) > 0 {
 					bestVersion = k
 					bestSemver = v2

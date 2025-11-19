@@ -86,6 +86,31 @@ type QueueItem struct {
 	IsDev      bool
 }
 
+// parseAliasVersion detects npm package aliases in the format "npm:package@version"
+// Returns: actualPackage, version, isAlias
+func parseAliasVersion(version string) (string, string, bool) {
+	if !strings.HasPrefix(version, "npm:") {
+		return "", version, false
+	}
+
+	// Parse "npm:@babel/traverse@^7.25.3" or "npm:lodash@^4.17.21"
+	spec := strings.TrimPrefix(version, "npm:")
+
+	lastAt := strings.LastIndex(spec, "@")
+	if lastAt <= 0 {
+		return spec, "latest", true
+	}
+
+	if lastAt == 0 {
+		return spec, "latest", true
+	}
+
+	actualPkg := spec[:lastAt]
+	actualVersion := spec[lastAt+1:]
+
+	return actualPkg, actualVersion, true
+}
+
 func BuildDependencies() (*Dependencies, error) {
 	cfg, err := config.New()
 	if err != nil {
@@ -471,8 +496,18 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	queue := make([]QueueItem, 0)
 
 	for name, version := range packageJson.Dependencies {
+		dep := packagejson.Dependency{Name: name, Version: version}
+
+		// Check for npm alias format: "npm:actual-package@version"
+		if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+			dep.ActualName = actualPkg
+			dep.Version = actualVersion
+		} else {
+			dep.ActualName = name
+		}
+
 		queue = append(queue, QueueItem{
-			Dep:        packagejson.Dependency{Name: name, Version: version},
+			Dep:        dep,
 			ParentName: "package.json",
 			IsDev:      false,
 		})
@@ -480,8 +515,18 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 	if !isProduction {
 		for name, version := range packageJson.DevDependencies {
+			dep := packagejson.Dependency{Name: name, Version: version}
+
+			// Check for npm alias format: "npm:actual-package@version"
+			if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+				dep.ActualName = actualPkg
+				dep.Version = actualVersion
+			} else {
+				dep.ActualName = name
+			}
+
 			queue = append(queue, QueueItem{
-				Dep:        packagejson.Dependency{Name: name, Version: version},
+				Dep:        dep,
 				ParentName: "package.json",
 				IsDev:      true,
 			})
@@ -550,25 +595,31 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				default:
 				}
 
+				// Use ActualName for downloading (handles aliases)
+				actualName := item.Dep.ActualName
+				if actualName == "" {
+					actualName = item.Dep.Name
+				}
+
 				pm.downloadMu.Lock()
-				pkgLock, exists := pm.downloadLocks[item.Dep.Name]
+				pkgLock, exists := pm.downloadLocks[actualName]
 				if !exists {
 					pkgLock = &sync.Mutex{}
-					pm.downloadLocks[item.Dep.Name] = pkgLock
+					pm.downloadLocks[actualName] = pkgLock
 				}
 				pm.downloadMu.Unlock()
 
 				pkgLock.Lock()
 
-				manifestPath := filepath.Join(pm.manifest.Path, item.Dep.Name+".json")
+				manifestPath := filepath.Join(pm.manifest.Path, actualName+".json")
 				var currentEtag string
 
 				if _, err := os.Stat(manifestPath); err == nil {
-					currentEtag = pm.Etag.Get(item.Dep.Name)
+					currentEtag = pm.Etag.Get(actualName)
 				} else {
-					etag := pm.Etag.Get(item.Dep.Name)
+					etag := pm.Etag.Get(actualName)
 					var downloadErr error
-					currentEtag, _, downloadErr = pm.manifest.Download(item.Dep.Name, etag)
+					currentEtag, _, downloadErr = pm.manifest.Download(actualName, etag)
 					if downloadErr != nil {
 						pkgLock.Unlock()
 						select {
@@ -593,7 +644,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 
 				version := pm.versionInfo.getVersion(item.Dep.Version, npmPackage)
-				packageKey := item.Dep.Name + "@" + version
+				packageKey := actualName + "@" + version
 
 				if version == "" {
 					fmt.Println("Version not found for package:", item.Dep.Name, "with constraint:", item.Dep.Version)
@@ -635,15 +686,15 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 				mapMutex.Unlock()
 
-				configPackageVersion := filepath.Join(pm.packagesPath, item.Dep.Name+"@"+version)
+				configPackageVersion := filepath.Join(pm.packagesPath, actualName+"@"+version)
 
-				tarballName := item.Dep.Name
-				if strings.HasPrefix(item.Dep.Name, "@") && strings.Contains(item.Dep.Name, "/") {
-					parts := strings.Split(item.Dep.Name, "/")
+				tarballName := actualName
+				if strings.HasPrefix(actualName, "@") && strings.Contains(actualName, "/") {
+					parts := strings.Split(actualName, "/")
 					tarballName = parts[1]
 				}
 
-				tarballURL := fmt.Sprintf("%s%s/-/%s-%s.tgz", npmRegistryURL, item.Dep.Name, tarballName, version)
+				tarballURL := fmt.Sprintf("%s%s/-/%s-%s.tgz", npmRegistryURL, actualName, tarballName, version)
 
 				if shouldProcessDeps && !utils.FolderExists(configPackageVersion) {
 					if tarballURL == "" || version == "" {
@@ -686,7 +737,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				mapMutex.Unlock()
 
 				if shouldProcessDeps {
-					packageJsonPath := filepath.Join(pm.packagesPath, item.Dep.Name+"@"+version, "package.json")
+					packageJsonPath := filepath.Join(pm.packagesPath, actualName+"@"+version, "package.json")
 
 					data, err := pm.packageJsonParse.Parse(packageJsonPath)
 					if err != nil {
@@ -699,16 +750,25 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					mapMutex.Lock()
-					for name, version := range data.Dependencies {
+					for name, depVersion := range data.Dependencies {
 						pkgItem := packageLock.Packages[packageResolved]
 						if pkgItem.Dependencies == nil {
 							pkgItem.Dependencies = make(map[string]string)
 						}
-						pkgItem.Dependencies[name] = version
+						pkgItem.Dependencies[name] = depVersion
 						packageLock.Packages[packageResolved] = pkgItem
 
+						// Check if sub-dependency is also an alias
+						subDep := packagejson.Dependency{Name: name, Version: depVersion}
+						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+							subDep.ActualName = actualPkg
+							subDep.Version = actualVersion
+						} else {
+							subDep.ActualName = name
+						}
+
 						workChan <- QueueItem{
-							Dep:        packagejson.Dependency{Name: name, Version: version},
+							Dep:        subDep,
 							ParentName: item.Dep.Name,
 							IsDev:      item.IsDev,
 						}

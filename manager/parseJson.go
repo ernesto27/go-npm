@@ -21,7 +21,7 @@ type NPMPackage struct {
 	Repository     any             `json:"repository"`
 	Description    string          `json:"description"`
 	Contributors   any             `json:"contributors"`
-	Maintainers    []Maintainer    `json:"maintainers"`
+	Maintainers    any             `json:"maintainers"`
 	Readme         string          `json:"readme"`
 	ReadmeFilename string          `json:"readmeFilename"`
 	Users          map[string]bool `json:"users"`
@@ -38,7 +38,7 @@ type Version struct {
 	Author                 any                    `json:"author"`
 	License                any                    `json:"license"`
 	ID                     string                 `json:"_id"`
-	Maintainers            []Maintainer           `json:"maintainers"`
+	Maintainers            any                    `json:"maintainers"`
 	Homepage               string                 `json:"homepage"`
 	Bugs                   any                    `json:"bugs"`
 	Dist                   Dist                   `json:"dist"`
