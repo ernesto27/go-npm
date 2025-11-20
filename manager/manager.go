@@ -713,7 +713,13 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					if existingPkg.Dep.Version != version {
 						fmt.Println("Package Repeated:", item.Dep.Name)
 						fmt.Println("Resolved version:", version)
-						packageResolved = "node_modules/" + item.ParentName + "/node_modules/" + item.Dep.Name
+						// ParentName is now the full resolved path (e.g., "node_modules/wrap-ansi")
+						// or "package.json" for top-level dependencies
+						if item.ParentName == "package.json" {
+							packageResolved = "node_modules/" + item.Dep.Name
+						} else {
+							packageResolved = item.ParentName + "/node_modules/" + item.Dep.Name
+						}
 
 						if _, processed := processingPkgs[packageKey]; processed {
 							shouldProcessDeps = false
@@ -847,7 +853,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 						workChan <- QueueItem{
 							Dep:        subDep,
-							ParentName: item.Dep.Name,
+							ParentName: packageResolved,
 							IsDev:      item.IsDev,
 						}
 					}
@@ -872,7 +878,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 						workChan <- QueueItem{
 							Dep:        subDep,
-							ParentName: item.Dep.Name,
+							ParentName: packageResolved,
 							IsDev:      false,
 							IsOptional: true,
 						}
