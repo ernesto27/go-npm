@@ -115,7 +115,7 @@ func TestVersionInfo_getVersionCaret(t *testing.T) {
 			version:  "^0.2.3",
 			versions: []string{"0.1.0", "0.2.3", "0.2.5", "0.3.0", "1.0.0"},
 			latest:   "1.0.0",
-			expected: "0.3.0", // Highest in major version 0
+			expected: "0.2.5", // For 0.x, ^0.2.3 means >=0.2.3 <0.3.0 (only patch updates)
 		},
 		{
 			name:     "Caret with exact match only",
