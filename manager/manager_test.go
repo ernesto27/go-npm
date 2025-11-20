@@ -468,6 +468,83 @@ func TestInstallGlobal(t *testing.T) {
 	}
 }
 
+func TestParseAliasVersion(t *testing.T) {
+	testCases := []struct {
+		name            string
+		version         string
+		expectedPkg     string
+		expectedVersion string
+		expectedIsAlias bool
+	}{
+		{
+			name:            "simple alias with version",
+			version:         "npm:lodash@^4.17.21",
+			expectedPkg:     "lodash",
+			expectedVersion: "^4.17.21",
+			expectedIsAlias: true,
+		},
+		{
+			name:            "scoped package alias",
+			version:         "npm:@babel/traverse@^7.25.3",
+			expectedPkg:     "@babel/traverse",
+			expectedVersion: "^7.25.3",
+			expectedIsAlias: true,
+		},
+		{
+			name:            "alias without version defaults to latest",
+			version:         "npm:lodash",
+			expectedPkg:     "lodash",
+			expectedVersion: "latest",
+			expectedIsAlias: true,
+		},
+		{
+			name:            "scoped package alias without version",
+			version:         "npm:@babel/core",
+			expectedPkg:     "@babel/core",
+			expectedVersion: "latest",
+			expectedIsAlias: true,
+		},
+		{
+			name:            "regular version not an alias",
+			version:         "^4.17.21",
+			expectedPkg:     "",
+			expectedVersion: "^4.17.21",
+			expectedIsAlias: false,
+		},
+		{
+			name:            "exact version not an alias",
+			version:         "1.0.0",
+			expectedPkg:     "",
+			expectedVersion: "1.0.0",
+			expectedIsAlias: false,
+		},
+		{
+			name:            "alias with exact version",
+			version:         "npm:is-odd@3.0.1",
+			expectedPkg:     "is-odd",
+			expectedVersion: "3.0.1",
+			expectedIsAlias: true,
+		},
+		{
+			name:            "alias with tilde version",
+			version:         "npm:express@~4.18.0",
+			expectedPkg:     "express",
+			expectedVersion: "~4.18.0",
+			expectedIsAlias: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actualPkg, actualVersion, isAlias := parseAliasVersion(tc.version)
+
+			assert.Equal(t, tc.expectedPkg, actualPkg, "package name should match")
+			assert.Equal(t, tc.expectedVersion, actualVersion, "version should match")
+			assert.Equal(t, tc.expectedIsAlias, isAlias, "isAlias flag should match")
+		})
+	}
+}
+
 func TestFetchToCache(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -575,6 +652,65 @@ func TestFetchToCache(t *testing.T) {
 			expectError: true,
 			validate: func(t *testing.T, pm *PackageManager) {
 				// No validation needed for error case
+			},
+		},
+		{
+			name: "successfully fetches alias package",
+			setupFunc: func(t *testing.T) (*PackageManager, string) {
+				t.Helper()
+				pm, _, origDir := setupTestPackageManager(t)
+				return pm, origDir
+			},
+			packageJSON: packagejson.PackageJSON{
+				Dependencies: map[string]string{
+					"my-is-odd": "npm:is-odd@3.0.1",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, pm *PackageManager) {
+				// Verify actual package was downloaded to cache using real name
+				pkgPath := filepath.Join(pm.packagesPath, "is-odd@3.0.1")
+				assert.DirExists(t, pkgPath, "actual package (is-odd) should be cached")
+
+				// Verify package.json exists in cached package
+				packageJSONPath := filepath.Join(pkgPath, "package.json")
+				assert.FileExists(t, packageJSONPath, "package.json should exist in cached package")
+
+				// Verify packageLock contains alias name in dependencies
+				assert.Contains(t, pm.packageLock.Dependencies, "my-is-odd")
+				assert.Equal(t, "3.0.1", pm.packageLock.Dependencies["my-is-odd"])
+
+				// Verify package entry exists in Packages under alias name
+				_, exists := pm.packageLock.Packages["node_modules/my-is-odd"]
+				assert.True(t, exists, "package should exist in packageLock.Packages under alias name")
+			},
+		},
+		{
+			name: "successfully fetches scoped package alias",
+			setupFunc: func(t *testing.T) (*PackageManager, string) {
+				t.Helper()
+				pm, _, origDir := setupTestPackageManager(t)
+				return pm, origDir
+			},
+			packageJSON: packagejson.PackageJSON{
+				Dependencies: map[string]string{
+					"babel-traverse": "npm:@babel/traverse@7.25.3",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, pm *PackageManager) {
+				// Verify actual scoped package was downloaded
+				// Note: The package should be cached with its actual name
+				pkgPath := filepath.Join(pm.packagesPath, "@babel", "traverse@7.25.3")
+				assert.DirExists(t, pkgPath, "scoped package should be cached")
+
+				// Verify packageLock contains alias name
+				assert.Contains(t, pm.packageLock.Dependencies, "babel-traverse")
+				assert.Equal(t, "7.25.3", pm.packageLock.Dependencies["babel-traverse"])
+
+				// Verify package entry exists under alias name
+				_, exists := pm.packageLock.Packages["node_modules/babel-traverse"]
+				assert.True(t, exists, "package should exist in packageLock.Packages under alias name")
 			},
 		},
 	}
