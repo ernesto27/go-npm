@@ -84,6 +84,7 @@ type QueueItem struct {
 	Dep        packagejson.Dependency
 	ParentName string
 	IsDev      bool
+	IsOptional bool
 }
 
 // parseAliasVersion detects npm package aliases in the format "npm:package@version"
@@ -533,10 +534,30 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 		}
 	}
 
+	for name, version := range packageJson.OptionalDependencies {
+		dep := packagejson.Dependency{Name: name, Version: version}
+
+		// Check for npm alias format: "npm:actual-package@version"
+		if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+			dep.ActualName = actualPkg
+			dep.Version = actualVersion
+		} else {
+			dep.ActualName = name
+		}
+
+		queue = append(queue, QueueItem{
+			Dep:        dep,
+			ParentName: "package.json",
+			IsDev:      false,
+			IsOptional: true,
+		})
+	}
+
 	packageLock := packagejson.PackageLock{}
 	packageLock.Packages = make(map[string]packagejson.PackageItem)
 	packageLock.Dependencies = make(map[string]string)
 	packageLock.DevDependencies = make(map[string]string)
+	packageLock.OptionalDependencies = make(map[string]string)
 	packagesVersion := make(map[string]QueueItem)
 
 	var (
@@ -622,6 +643,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					currentEtag, _, downloadErr = pm.manifest.Download(actualName, etag)
 					if downloadErr != nil {
 						pkgLock.Unlock()
+						if item.IsOptional {
+							fmt.Printf("Warning: Optional dependency %s failed to download manifest: %v\n", item.Dep.Name, downloadErr)
+							return
+						}
 						select {
 						case errChan <- downloadErr:
 							close(done)
@@ -635,6 +660,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				pkgLock.Unlock()
 
 				if err != nil {
+					if item.IsOptional {
+						fmt.Printf("Warning: Optional dependency %s failed to parse manifest: %v\n", item.Dep.Name, err)
+						return
+					}
 					select {
 					case errChan <- err:
 						close(done)
@@ -648,6 +677,32 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 				if version == "" {
 					fmt.Println("Version not found for package:", item.Dep.Name, "with constraint:", item.Dep.Version)
+				}
+
+				// Check platform compatibility for optional dependencies
+				if item.IsOptional {
+					if versionData, ok := npmPackage.Versions[version]; ok {
+						if !utils.IsCompatiblePlatform(versionData.OS, versionData.CPU) {
+							fmt.Printf("Skipping optional dependency %s@%s (incompatible platform)\n", item.Dep.Name, version)
+							// Still add to lock file but skip download
+							mapMutex.Lock()
+							packageResolved := "node_modules/" + item.Dep.Name
+							pckItem := packagejson.PackageItem{
+								Name:     item.Dep.Name,
+								Version:  version,
+								Resolved: "",
+								Optional: true,
+								OS:       versionData.OS,
+								CPU:      versionData.CPU,
+							}
+							packageLock.Packages[packageResolved] = pckItem
+							if item.ParentName == "package.json" {
+								packageLock.OptionalDependencies[item.Dep.Name] = version
+							}
+							mapMutex.Unlock()
+							return
+						}
+					}
 				}
 
 				var packageResolved string
@@ -703,6 +758,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 					err = pm.tarball.Download(tarballURL)
 					if err != nil {
+						if item.IsOptional {
+							fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
+							return
+						}
 						select {
 						case errChan <- err:
 							close(done)
@@ -717,6 +776,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					)
 
 					if err != nil {
+						if item.IsOptional {
+							fmt.Printf("Warning: Optional dependency %s failed to extract: %v\n", item.Dep.Name, err)
+							return
+						}
 						select {
 						case errChan <- err:
 							close(done)
@@ -732,8 +795,23 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					Version:  version,
 					Resolved: tarballURL,
 					Etag:     currentEtag,
+					Optional: item.IsOptional,
+				}
+				// Add OS and CPU fields if available
+				if versionData, ok := npmPackage.Versions[version]; ok {
+					if len(versionData.OS) > 0 {
+						pckItem.OS = versionData.OS
+					}
+					if len(versionData.CPU) > 0 {
+						pckItem.CPU = versionData.CPU
+					}
 				}
 				packageLock.Packages[packageResolved] = pckItem
+
+				// Add to OptionalDependencies in lock if this is a top-level optional dependency
+				if item.IsOptional && item.ParentName == "package.json" {
+					packageLock.OptionalDependencies[item.Dep.Name] = version
+				}
 				mapMutex.Unlock()
 
 				if shouldProcessDeps {
@@ -771,6 +849,32 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							Dep:        subDep,
 							ParentName: item.Dep.Name,
 							IsDev:      item.IsDev,
+						}
+					}
+
+					// Process optional dependencies from sub-packages
+					for name, depVersion := range data.OptionalDependencies {
+						pkgItem := packageLock.Packages[packageResolved]
+						if pkgItem.OptionalDependencies == nil {
+							pkgItem.OptionalDependencies = make(map[string]string)
+						}
+						pkgItem.OptionalDependencies[name] = depVersion
+						packageLock.Packages[packageResolved] = pkgItem
+
+						// Check if sub-dependency is also an alias
+						subDep := packagejson.Dependency{Name: name, Version: depVersion}
+						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+							subDep.ActualName = actualPkg
+							subDep.Version = actualVersion
+						} else {
+							subDep.ActualName = name
+						}
+
+						workChan <- QueueItem{
+							Dep:        subDep,
+							ParentName: item.Dep.Name,
+							IsDev:      false,
+							IsOptional: true,
 						}
 					}
 					mapMutex.Unlock()

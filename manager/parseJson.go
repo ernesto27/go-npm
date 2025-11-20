@@ -55,6 +55,9 @@ type Version struct {
 	NodeVersion            string                 `json:"_nodeVersion"`
 	Dependencies           map[string]string      `json:"dependencies"`
 	DevDependencies        map[string]string      `json:"devDependencies"`
+	OptionalDependencies   map[string]string      `json:"optionalDependencies"`
+	OS                     []string               `json:"os"`
+	CPU                    []string               `json:"cpu"`
 	HasShrinkwrap          bool                   `json:"_hasShrinkwrap"`
 	Keywords               any                    `json:"keywords"`
 	Contributors           any                    `json:"contributors"`

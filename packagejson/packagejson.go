@@ -30,9 +30,10 @@ type PackageJSON struct {
 	Homepage        string            `json:"homepage"`
 	Funding         any               `json:"funding"`
 	Keywords        any               `json:"keywords"`
-	Dependencies    map[string]string `json:"dependencies"`
-	DevDependencies map[string]string `json:"devDependencies"`
-	Engines         any               `json:"engines"`
+	Dependencies         map[string]string `json:"dependencies"`
+	DevDependencies      map[string]string `json:"devDependencies"`
+	OptionalDependencies map[string]string `json:"optionalDependencies"`
+	Engines              any               `json:"engines"`
 	Files           []string          `json:"files"`
 	Scripts         map[string]string `json:"scripts"`
 	Main            any               `json:"main"`
@@ -63,20 +64,25 @@ type PackageLock struct {
 	Name            string                 `json:"name"`
 	Version         string                 `json:"version"`
 	LockfileVersion int                    `json:"lockfileVersion"`
-	Requires        bool                   `json:"requires"`
-	Dependencies    map[string]string      `json:"dependencies"`
-	DevDependencies map[string]string      `json:"devDependencies,omitempty"`
-	Packages        map[string]PackageItem `json:"packages"`
+	Requires             bool                   `json:"requires"`
+	Dependencies         map[string]string      `json:"dependencies"`
+	DevDependencies      map[string]string      `json:"devDependencies,omitempty"`
+	OptionalDependencies map[string]string      `json:"optionalDependencies,omitempty"`
+	Packages             map[string]PackageItem `json:"packages"`
 }
 
 type PackageItem struct {
-	Name         string            `json:"name,omitempty"`
-	Version      string            `json:"version,omitempty"`
-	Resolved     string            `json:"resolved,omitempty"`
-	Integrity    string            `json:"integrity,omitempty"`
-	License      any               `json:"license,omitempty"`
-	Etag         string            `json:"etag,omitempty"`
-	Dependencies map[string]string `json:"dependencies,omitempty"`
+	Name                 string            `json:"name,omitempty"`
+	Version              string            `json:"version,omitempty"`
+	Resolved             string            `json:"resolved,omitempty"`
+	Integrity            string            `json:"integrity,omitempty"`
+	License              any               `json:"license,omitempty"`
+	Etag                 string            `json:"etag,omitempty"`
+	Dependencies         map[string]string `json:"dependencies,omitempty"`
+	OptionalDependencies map[string]string `json:"optionalDependencies,omitempty"`
+	Optional             bool              `json:"optional,omitempty"`
+	OS                   []string          `json:"os,omitempty"`
+	CPU                  []string          `json:"cpu,omitempty"`
 }
 
 func NewPackageJSONParser(cfg *config.Config) *PackageJSONParser {
@@ -178,6 +184,13 @@ func (p *PackageJSONParser) UpdateLockFile(data *PackageLock, isGlobal bool) err
 
 	for key, version := range data.Dependencies {
 		existingLock.Dependencies[key] = version
+	}
+
+	for key, version := range data.OptionalDependencies {
+		if existingLock.OptionalDependencies == nil {
+			existingLock.OptionalDependencies = make(map[string]string)
+		}
+		existingLock.OptionalDependencies[key] = version
 	}
 
 	if existingLock.Packages == nil {
@@ -297,11 +310,22 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 		}
 	}
 
+	for name, versionInJSON := range p.PackageJSON.OptionalDependencies {
+		versionInLock, exists := p.PackageLock.OptionalDependencies[name]
+		if !exists || versionInJSON != versionInLock {
+			toInstall = append(toInstall, Dependency{
+				Name:    name,
+				Version: versionInJSON,
+			})
+		}
+	}
+
 	for name, versionInLock := range p.PackageLock.Dependencies {
 		_, existsInDeps := p.PackageJSON.Dependencies[name]
 		_, existsInDevDeps := p.PackageJSON.DevDependencies[name]
+		_, existsInOptionalDeps := p.PackageJSON.OptionalDependencies[name]
 
-		if !existsInDeps && !existsInDevDeps {
+		if !existsInDeps && !existsInDevDeps && !existsInOptionalDeps {
 			toRemove = append(toRemove, Dependency{
 				Name:    name,
 				Version: versionInLock,

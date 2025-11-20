@@ -9,6 +9,7 @@ import (
 	"npm-packager/packagecopy"
 	"npm-packager/packagejson"
 	"npm-packager/tarball"
+	"npm-packager/utils"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1467,6 +1468,134 @@ func TestUninstallGlobal(t *testing.T) {
 				assert.NoError(t, err)
 				if tc.validate != nil {
 					tc.validate(t, pm, tmpDir)
+				}
+			}
+		})
+	}
+}
+
+func TestFetchToCacheWithOptionalDependencies(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) (*PackageManager, string)
+		packageJSON packagejson.PackageJSON
+		expectError bool
+		validate    func(t *testing.T, pm *PackageManager)
+	}{
+		{
+			name: "successfully handles optional dependency compatible with current platform",
+			setupFunc: func(t *testing.T) (*PackageManager, string) {
+				t.Helper()
+				pm, _, origDir := setupTestPackageManager(t)
+				return pm, origDir
+			},
+			packageJSON: packagejson.PackageJSON{
+				OptionalDependencies: map[string]string{
+					"is-odd": "3.0.1",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, pm *PackageManager) {
+				pkgPath := filepath.Join(pm.packagesPath, "is-odd@3.0.1")
+				assert.DirExists(t, pkgPath, "optional dependency should be cached")
+
+				assert.NotNil(t, pm.packageLock)
+				assert.Contains(t, pm.packageLock.OptionalDependencies, "is-odd")
+				assert.Equal(t, "3.0.1", pm.packageLock.OptionalDependencies["is-odd"])
+
+				pkgItem, exists := pm.packageLock.Packages["node_modules/is-odd"]
+				assert.True(t, exists, "optional dependency should exist in packageLock.Packages")
+				assert.True(t, pkgItem.Optional, "package should be marked as optional")
+			},
+		},
+		{
+			name: "skips optional dependency incompatible with current platform (darwin-only package on linux)",
+			setupFunc: func(t *testing.T) (*PackageManager, string) {
+				t.Helper()
+				pm, _, origDir := setupTestPackageManager(t)
+				return pm, origDir
+			},
+			packageJSON: packagejson.PackageJSON{
+				OptionalDependencies: map[string]string{
+					// fsevents is darwin-only - will be skipped on non-darwin platforms
+					"fsevents": "2.3.2",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, pm *PackageManager) {
+				assert.NotNil(t, pm.packageLock)
+
+				currentOS := utils.GetCurrentOS()
+				pkgPath := filepath.Join(pm.packagesPath, "fsevents@2.3.2")
+
+				if currentOS == "darwin" {
+					assert.DirExists(t, pkgPath, "fsevents should be installed on darwin")
+					assert.Contains(t, pm.packageLock.OptionalDependencies, "fsevents")
+				} else {
+					assert.NoDirExists(t, pkgPath, "fsevents should not be installed on non-darwin platforms")
+
+					pkgItem, exists := pm.packageLock.Packages["node_modules/fsevents"]
+					if exists {
+						assert.Equal(t, "", pkgItem.Resolved, "skipped optional dependency should have empty Resolved")
+						assert.True(t, pkgItem.Optional, "should be marked as optional")
+						assert.NotEmpty(t, pkgItem.OS, "should have OS constraints recorded")
+					}
+				}
+			},
+		},
+		{
+			name: "handles platform-specific optional dependencies with CPU constraints",
+			setupFunc: func(t *testing.T) (*PackageManager, string) {
+				t.Helper()
+				pm, _, origDir := setupTestPackageManager(t)
+				return pm, origDir
+			},
+			packageJSON: packagejson.PackageJSON{
+				OptionalDependencies: map[string]string{
+					"@esbuild/linux-x64": "0.19.0",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, pm *PackageManager) {
+				assert.NotNil(t, pm.packageLock)
+
+				currentOS := utils.GetCurrentOS()
+				currentCPU := utils.GetCurrentCPU()
+
+				pkgPath := filepath.Join(pm.packagesPath, "@esbuild", "linux-x64@0.19.0")
+
+				if currentOS == "linux" && currentCPU == "x64" {
+					assert.DirExists(t, pkgPath, "platform-specific package should be installed on matching platform")
+				} else {
+					assert.NoDirExists(t, pkgPath, "platform-specific package should not be installed on non-matching platform")
+
+					pkgItem, exists := pm.packageLock.Packages["node_modules/@esbuild/linux-x64"]
+					if exists {
+						assert.True(t, pkgItem.Optional, "should be marked as optional")
+					}
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pm, origDir := tc.setupFunc(t)
+
+			defer func() {
+				if origDir != "" {
+					os.Chdir(origDir)
+				}
+			}()
+
+			err := pm.fetchToCache(tc.packageJSON, false)
+
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				if tc.validate != nil {
+					tc.validate(t, pm)
 				}
 			}
 		})
