@@ -27,12 +27,13 @@ type PackageJSON struct {
 	Contributors    any               `json:"contributors"`
 	License         any               `json:"license"`
 	Repository      any               `json:"repository"`
-	Homepage        string            `json:"homepage"`
+	Homepage        any               `json:"homepage"`
 	Funding         any               `json:"funding"`
 	Keywords        any               `json:"keywords"`
 	Dependencies         map[string]string `json:"dependencies"`
 	DevDependencies      map[string]string `json:"devDependencies"`
 	OptionalDependencies map[string]string `json:"optionalDependencies"`
+	PeerDependencies     map[string]string `json:"peerDependencies"`
 	Engines              any               `json:"engines"`
 	Files           []string          `json:"files"`
 	Scripts         map[string]string `json:"scripts"`
@@ -68,6 +69,7 @@ type PackageLock struct {
 	Dependencies         map[string]string      `json:"dependencies"`
 	DevDependencies      map[string]string      `json:"devDependencies,omitempty"`
 	OptionalDependencies map[string]string      `json:"optionalDependencies,omitempty"`
+	PeerDependencies     map[string]string      `json:"peerDependencies,omitempty"`
 	Packages             map[string]PackageItem `json:"packages"`
 }
 
@@ -80,6 +82,7 @@ type PackageItem struct {
 	Etag                 string            `json:"etag,omitempty"`
 	Dependencies         map[string]string `json:"dependencies,omitempty"`
 	OptionalDependencies map[string]string `json:"optionalDependencies,omitempty"`
+	PeerDependencies     map[string]string `json:"peerDependencies,omitempty"`
 	Optional             bool              `json:"optional,omitempty"`
 	OS                   []string          `json:"os,omitempty"`
 	CPU                  []string          `json:"cpu,omitempty"`

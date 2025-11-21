@@ -85,6 +85,7 @@ type QueueItem struct {
 	ParentName string
 	IsDev      bool
 	IsOptional bool
+	IsPeer     bool
 }
 
 // parseAliasVersion detects npm package aliases in the format "npm:package@version"
@@ -558,6 +559,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	packageLock.Dependencies = make(map[string]string)
 	packageLock.DevDependencies = make(map[string]string)
 	packageLock.OptionalDependencies = make(map[string]string)
+	packageLock.PeerDependencies = make(map[string]string)
 	packagesVersion := make(map[string]QueueItem)
 
 	var (
@@ -818,6 +820,11 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				if item.IsOptional && item.ParentName == "package.json" {
 					packageLock.OptionalDependencies[item.Dep.Name] = version
 				}
+
+				// Track peer dependencies that were auto-installed
+				if item.IsPeer {
+					packageLock.PeerDependencies[item.Dep.Name] = version
+				}
 				mapMutex.Unlock()
 
 				if shouldProcessDeps {
@@ -883,6 +890,33 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							IsOptional: true,
 						}
 					}
+
+					// Process peer dependencies from sub-packages (auto-install per npm 7+ behavior)
+					for name, depVersion := range data.PeerDependencies {
+						pkgItem := packageLock.Packages[packageResolved]
+						if pkgItem.PeerDependencies == nil {
+							pkgItem.PeerDependencies = make(map[string]string)
+						}
+						pkgItem.PeerDependencies[name] = depVersion
+						packageLock.Packages[packageResolved] = pkgItem
+
+						// Check if sub-dependency is also an alias
+						subDep := packagejson.Dependency{Name: name, Version: depVersion}
+						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+							subDep.ActualName = actualPkg
+							subDep.Version = actualVersion
+						} else {
+							subDep.ActualName = name
+						}
+
+						workChan <- QueueItem{
+							Dep:        subDep,
+							ParentName: packageResolved,
+							IsDev:      false,
+							IsOptional: false,
+							IsPeer:     true,
+						}
+					}
 					mapMutex.Unlock()
 				}
 			}(item)
@@ -904,7 +938,65 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	}
 	pm.packageLock = &packageLock
 
+	// Validate peer dependencies and print warnings
+	warnings := pm.validatePeerDependencies(&packageLock)
+	if len(warnings) > 0 {
+		fmt.Fprintln(os.Stderr, "\n⚠️  Peer dependency warnings:")
+		for _, warning := range warnings {
+			fmt.Fprintln(os.Stderr, "  ", warning)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+
 	return nil
+}
+
+// validatePeerDependencies checks if peer dependency requirements are satisfied
+func (pm *PackageManager) validatePeerDependencies(packageLock *packagejson.PackageLock) []string {
+	warnings := []string{}
+
+	// Iterate through all packages and check their peer dependencies
+	for pkgPath, pkgItem := range packageLock.Packages {
+		if len(pkgItem.PeerDependencies) == 0 {
+			continue
+		}
+
+		for peerName, peerVersionConstraint := range pkgItem.PeerDependencies {
+			// Check if peer dependency is installed
+			installedVersion := ""
+			peerPath := "node_modules/" + peerName
+
+			if peerPkg, exists := packageLock.Packages[peerPath]; exists {
+				installedVersion = peerPkg.Version
+			}
+
+			if installedVersion == "" {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s requires peer %s@%s but it is not installed",
+					pkgPath, peerName, peerVersionConstraint,
+				))
+				continue
+			}
+
+			// Check if installed version satisfies the peer requirement
+			npmPackage := &NPMPackage{
+				Versions: map[string]Version{
+					installedVersion: {Version: installedVersion},
+				},
+				DistTags: DistTags{Latest: installedVersion},
+			}
+
+			resolvedVersion := pm.versionInfo.getVersion(peerVersionConstraint, npmPackage)
+			if resolvedVersion != installedVersion {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s requires peer %s@%s but version %s is installed",
+					pkgPath, peerName, peerVersionConstraint, installedVersion,
+				))
+			}
+		}
+	}
+
+	return warnings
 }
 
 func (pm *PackageManager) addBinToPath() error {

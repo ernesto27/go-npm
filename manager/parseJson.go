@@ -15,7 +15,7 @@ type NPMPackage struct {
 	Time     map[string]string  `json:"time"`
 	Bugs     any                `json:"bugs"`
 	License  any                `json:"license"`
-	Homepage string             `json:"homepage"`
+	Homepage any                `json:"homepage"`
 	Keywords any                `json:"keywords"`
 
 	Repository     any             `json:"repository"`
@@ -39,7 +39,7 @@ type Version struct {
 	License                any                    `json:"license"`
 	ID                     string                 `json:"_id"`
 	Maintainers            any                    `json:"maintainers"`
-	Homepage               string                 `json:"homepage"`
+	Homepage               any                    `json:"homepage"`
 	Bugs                   any                    `json:"bugs"`
 	Dist                   Dist                   `json:"dist"`
 	From                   string                 `json:"_from"`
@@ -56,6 +56,7 @@ type Version struct {
 	Dependencies           map[string]string      `json:"dependencies"`
 	DevDependencies        map[string]string      `json:"devDependencies"`
 	OptionalDependencies   map[string]string      `json:"optionalDependencies"`
+	PeerDependencies       map[string]string      `json:"peerDependencies"`
 	OS                     []string               `json:"os"`
 	CPU                    []string               `json:"cpu"`
 	HasShrinkwrap          bool                   `json:"_hasShrinkwrap"`
