@@ -1,3 +1,4 @@
+[] - add version command
 [] - update command
 [] - init command
 [] - prune command
