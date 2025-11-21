@@ -33,15 +33,15 @@ func (v *VersionInfo) getVersion(version string, npmPackage *NPMPackage) string 
 		complexVersion := v.getVersionComplexRange(version, npmPackage)
 		return complexVersion
 	case strings.HasPrefix(version, ">="):
-		return ""
+		return v.getVersionGreaterOrEqual(version, npmPackage)
 	case strings.HasPrefix(version, "<="):
-		return ""
+		return v.getVersionLessOrEqual(version, npmPackage)
 	case strings.HasPrefix(version, ">"):
-		return ""
+		return v.getVersionGreater(version, npmPackage)
 	case strings.HasPrefix(version, "<"):
-		return ""
+		return v.getVersionLess(version, npmPackage)
 	case strings.Contains(version, " - "):
-		return ""
+		return v.getVersionHyphenRange(version, npmPackage)
 	case version == "*" || version == "latest":
 		return npmPackage.DistTags.Latest
 	case strings.Contains(version, "x") || strings.Contains(version, "X"):
@@ -269,6 +269,114 @@ func (v *VersionInfo) getVersionOr(version string, npmPackage *NPMPackage) strin
 			// Keep track of the highest version found
 			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
 				bestVersion = resolvedVersion
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionGreaterOrEqual(version string, npmPackage *NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">="))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) >= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionLessOrEqual(version string, npmPackage *NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<="))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) <= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionGreater(version string, npmPackage *NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">"))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) > 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionLess(version string, npmPackage *NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<"))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) < 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionHyphenRange(version string, npmPackage *NPMPackage) string {
+	parts := strings.Split(version, " - ")
+	if len(parts) != 2 {
+		return npmPackage.DistTags.Latest
+	}
+
+	lowerBound := strings.TrimSpace(parts[0])
+	upperBound := strings.TrimSpace(parts[1])
+	vLower := "v" + lowerBound
+	vUpper := "v" + upperBound
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+
+		if semver.Compare(vCandidate, vLower) >= 0 && semver.Compare(vCandidate, vUpper) <= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
 				bestSemver = vCandidate
 			}
 		}

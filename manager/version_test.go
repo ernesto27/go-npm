@@ -426,7 +426,7 @@ func TestVersionInfo_getVersionOr(t *testing.T) {
 	}
 }
 
-func TestVersionInfo_getVersion_UnsupportedRanges(t *testing.T) {
+func TestVersionInfo_getVersion_SimpleRanges(t *testing.T) {
 	vi := newVersionInfo()
 	pkg := createTestPackage([]string{"1.0.0", "2.0.0", "3.0.0"}, "3.0.0")
 
@@ -436,35 +436,324 @@ func TestVersionInfo_getVersion_UnsupportedRanges(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "Greater than or equal (unsupported alone)",
+			name:     "Greater than or equal",
 			version:  ">=1.0.0",
-			expected: "",
+			expected: "3.0.0",
 		},
 		{
-			name:     "Less than or equal (unsupported alone)",
+			name:     "Less than or equal",
 			version:  "<=2.0.0",
-			expected: "",
+			expected: "2.0.0",
 		},
 		{
-			name:     "Greater than (unsupported alone)",
+			name:     "Greater than",
 			version:  ">1.0.0",
-			expected: "",
+			expected: "3.0.0",
 		},
 		{
-			name:     "Less than (unsupported alone)",
+			name:     "Less than",
 			version:  "<2.0.0",
-			expected: "",
+			expected: "1.0.0",
 		},
 		{
-			name:     "Hyphen range (unsupported)",
+			name:     "Hyphen range",
 			version:  "1.0.0 - 2.0.0",
-			expected: "",
+			expected: "2.0.0",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionGreaterOrEqual(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Greater or equal - returns highest version >= base",
+			version:  ">=1.5.0",
+			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
+			latest:   "2.5.0",
+			expected: "2.5.0",
+		},
+		{
+			name:     "Greater or equal - exact match at base",
+			version:  ">=2.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater or equal - no matching versions",
+			version:  ">=5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Greater or equal - all versions match",
+			version:  ">=0.1.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater or equal - with patch versions",
+			version:  ">=1.2.3",
+			versions: []string{"1.2.0", "1.2.3", "1.2.5", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionGreaterOrEqual(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionLessOrEqual(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Less or equal - returns highest version <= base",
+			version:  "<=2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0", "2.5.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Less or equal - exact match at base",
+			version:  "<=2.0.0",
+			versions: []string{"1.0.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Less or equal - no matching versions",
+			version:  "<=0.5.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "",
+		},
+		{
+			name:     "Less or equal - all versions match",
+			version:  "<=10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less or equal - with patch versions",
+			version:  "<=1.2.5",
+			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.2.7", "1.3.0"},
+			latest:   "1.3.0",
+			expected: "1.2.5",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionLessOrEqual(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionGreater(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Greater than - returns highest version > base",
+			version:  ">1.5.0",
+			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
+			latest:   "2.5.0",
+			expected: "2.5.0",
+		},
+		{
+			name:     "Greater than - excludes exact match",
+			version:  ">2.0.0",
+			versions: []string{"1.0.0", "2.0.0", "2.0.1", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater than - no matching versions",
+			version:  ">5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "5.0.0"},
+			latest:   "5.0.0",
+			expected: "",
+		},
+		{
+			name:     "Greater than - single match",
+			version:  ">1.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.0.1"},
+			latest:   "1.0.1",
+			expected: "1.0.1",
+		},
+		{
+			name:     "Greater than - with patch versions",
+			version:  ">1.2.3",
+			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionGreater(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionLess(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Less than - returns highest version < base",
+			version:  "<2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "1.9.9", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "1.9.9",
+		},
+		{
+			name:     "Less than - excludes exact match",
+			version:  "<2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.5.0",
+		},
+		{
+			name:     "Less than - no matching versions",
+			version:  "<1.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "",
+		},
+		{
+			name:     "Less than - all versions match",
+			version:  "<10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less than - with patch versions",
+			version:  "<1.3.0",
+			versions: []string{"1.0.0", "1.2.3", "1.2.9", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.9",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionLess(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionHyphenRange(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Hyphen range - inclusive on both ends",
+			version:  "1.0.0 - 2.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.1.0"},
+			latest:   "2.1.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Hyphen range - narrow range",
+			version:  "1.2.3 - 1.2.5",
+			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.2.5", "1.3.0"},
+			latest:   "1.3.0",
+			expected: "1.2.5",
+		},
+		{
+			name:     "Hyphen range - no matching versions",
+			version:  "5.0.0 - 6.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Hyphen range - single version in range",
+			version:  "1.5.0 - 2.5.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Hyphen range - all versions in range",
+			version:  "0.1.0 - 10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Hyphen range - exact boundaries",
+			version:  "2.0.0 - 3.0.0",
+			versions: []string{"1.9.9", "2.0.0", "2.5.0", "3.0.0", "3.0.1"},
+			latest:   "3.0.1",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Hyphen range - malformed (missing space)",
+			version:  "1.0.0-2.0.0",
+			versions: []string{"1.0.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0", // Falls back to latest
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionHyphenRange(tc.version, pkg)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
