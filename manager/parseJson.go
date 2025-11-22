@@ -46,7 +46,7 @@ type Version struct {
 	Shasum                 string                 `json:"_shasum"`
 	Engines                any                    `json:"engines"`
 	GitHead                string                 `json:"gitHead"`
-	Scripts                map[string]string      `json:"scripts"`
+	Scripts                any                    `json:"scripts"`
 	NPMUser                NPMUser                `json:"_npmUser"`
 	Repository             any                    `json:"repository"`
 	NPMVersion             string                 `json:"_npmVersion"`
