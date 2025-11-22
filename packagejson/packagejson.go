@@ -34,20 +34,25 @@ type PackageJSON struct {
 	DevDependencies      map[string]string `json:"devDependencies"`
 	OptionalDependencies map[string]string `json:"optionalDependencies"`
 	PeerDependencies     map[string]string `json:"peerDependencies"`
+	PeerDependenciesMeta map[string]PeerMeta `json:"peerDependenciesMeta"`
 	Engines              any               `json:"engines"`
-	Files           []string          `json:"files"`
+	Files           any               `json:"files"`
 	Scripts         map[string]string `json:"scripts"`
 	Main            any               `json:"main"`
 	Bin             any               `json:"bin"`
 	Types           string            `json:"types"`
 	Exports         any               `json:"exports"`
 	Private         bool              `json:"private"`
-	Workspaces      []string          `json:"workspaces"`
+	Workspaces      any               `json:"workspaces"`
 }
 
 type Funding struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
+}
+
+type PeerMeta struct {
+	Optional bool `json:"optional"`
 }
 
 type PackageJSONParser struct {

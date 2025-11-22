@@ -81,11 +81,12 @@ type Dependencies struct {
 }
 
 type QueueItem struct {
-	Dep        packagejson.Dependency
-	ParentName string
-	IsDev      bool
-	IsOptional bool
-	IsPeer     bool
+	Dep            packagejson.Dependency
+	ParentName     string
+	IsDev          bool
+	IsOptional     bool
+	IsPeer         bool
+	IsPeerOptional bool
 }
 
 // parseAliasVersion detects npm package aliases in the format "npm:package@version"
@@ -645,7 +646,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					currentEtag, _, downloadErr = pm.manifest.Download(actualName, etag)
 					if downloadErr != nil {
 						pkgLock.Unlock()
-						if item.IsOptional {
+						if item.IsOptional || item.IsPeerOptional {
 							fmt.Printf("Warning: Optional dependency %s failed to download manifest: %v\n", item.Dep.Name, downloadErr)
 							return
 						}
@@ -662,7 +663,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				pkgLock.Unlock()
 
 				if err != nil {
-					if item.IsOptional {
+					if item.IsOptional || item.IsPeerOptional {
 						fmt.Printf("Warning: Optional dependency %s failed to parse manifest: %v\n", item.Dep.Name, err)
 						return
 					}
@@ -766,7 +767,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 					err = pm.tarball.Download(tarballURL)
 					if err != nil {
-						if item.IsOptional {
+						if item.IsOptional || item.IsPeerOptional {
 							fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
 							return
 						}
@@ -784,7 +785,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					)
 
 					if err != nil {
-						if item.IsOptional {
+						if item.IsOptional || item.IsPeerOptional {
 							fmt.Printf("Warning: Optional dependency %s failed to extract: %v\n", item.Dep.Name, err)
 							return
 						}
@@ -900,6 +901,14 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						pkgItem.PeerDependencies[name] = depVersion
 						packageLock.Packages[packageResolved] = pkgItem
 
+						// Check if this peer dependency is optional
+						isPeerOptional := false
+						if data.PeerDependenciesMeta != nil {
+							if meta, exists := data.PeerDependenciesMeta[name]; exists {
+								isPeerOptional = meta.Optional
+							}
+						}
+
 						// Check if sub-dependency is also an alias
 						subDep := packagejson.Dependency{Name: name, Version: depVersion}
 						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
@@ -910,11 +919,12 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						}
 
 						workChan <- QueueItem{
-							Dep:        subDep,
-							ParentName: packageResolved,
-							IsDev:      false,
-							IsOptional: false,
-							IsPeer:     true,
+							Dep:            subDep,
+							ParentName:     packageResolved,
+							IsDev:          false,
+							IsOptional:     false,
+							IsPeer:         true,
+							IsPeerOptional: isPeerOptional,
 						}
 					}
 					mapMutex.Unlock()

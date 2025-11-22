@@ -2,7 +2,12 @@
 [] - update command
 [] - init command
 [] - prune command
-[] - check optionalDependencies and peerDependencies
+[] - add workspace
+[x] - check optionalDependencies and peerDependencies
 [] - show a better progress bar when install and better messages
 [] - check workspaces
 [x] - remove cache
+[] - check command npm build in repo nestjs , error gulp
+[] - fix create go-package-lock when binarie is running
+[] - test in mac 
+[] - test in windows

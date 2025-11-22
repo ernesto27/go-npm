@@ -2,7 +2,8 @@ node_modules*
 extracted
 *.tgz
 express
-tests
+tests/repos
+tests/test-results.log
 
 go-package-lock.json
 bun.lock

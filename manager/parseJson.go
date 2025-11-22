@@ -57,14 +57,19 @@ type Version struct {
 	DevDependencies        map[string]string      `json:"devDependencies"`
 	OptionalDependencies   map[string]string      `json:"optionalDependencies"`
 	PeerDependencies       map[string]string      `json:"peerDependencies"`
+	PeerDependenciesMeta   map[string]PeerMeta    `json:"peerDependenciesMeta"`
 	OS                     []string               `json:"os"`
 	CPU                    []string               `json:"cpu"`
 	HasShrinkwrap          bool                   `json:"_hasShrinkwrap"`
 	Keywords               any                    `json:"keywords"`
 	Contributors           any                    `json:"contributors"`
-	Files                  []string               `json:"files"`
+	Files                  any                    `json:"files"`
 	NPMOperationalInternal NPMOperationalInternal `json:"_npmOperationalInternal"`
 	NPMSignature           string                 `json:"npm-signature"`
+}
+
+type PeerMeta struct {
+	Optional bool `json:"optional"`
 }
 
 type Author struct {
