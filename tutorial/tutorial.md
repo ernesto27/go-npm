@@ -206,11 +206,14 @@ config.go
 package config
 
 import (
+	"go-npm/utils"
 	"os"
 	"path/filepath"
 )
 
 type Config struct {
+	NpmRegistryURL string
+
 	// Base directories
 	BaseDir     string
 	ManifestDir string
@@ -230,21 +233,42 @@ func New() (*Config, error) {
 
 	baseDir := filepath.Join(homeDir, ".config", "go-npm")
 
+	if err := utils.CreateDir(baseDir); err != nil {
+		return nil, err
+	}
+
+	manifestPath := filepath.Join(baseDir, "manifest")
+	if err := utils.CreateDir(manifestPath); err != nil {
+		return nil, err
+	}
+
+	tarballPath := filepath.Join(baseDir, "tarball")
+	if err := utils.CreateDir(tarballPath); err != nil {
+		return nil, err
+	}
+
+	packagesPath := filepath.Join(baseDir, "packages")
+	if err := utils.CreateDir(packagesPath); err != nil {
+		return nil, err
+	}
+
 	return &Config{
-		BaseDir:     baseDir,
-		ManifestDir: filepath.Join(baseDir, "manifest"),
-		TarballDir:  filepath.Join(baseDir, "tarball"),
-		PackagesDir: filepath.Join(baseDir, "packages"),
+		NpmRegistryURL: "https://registry.npmjs.org/",
+		BaseDir:        baseDir,
+		ManifestDir:    filepath.Join(baseDir, "manifest"),
+		TarballDir:     filepath.Join(baseDir, "tarball"),
+		PackagesDir:    filepath.Join(baseDir, "packages"),
 
 		LocalNodeModules: "./node_modules",
 	}, nil
 }
+
 ```
 
 
 in this file we define all the config directories that the we need for our package manager, 
 some are created in .config/go-npm folder and others are local to the project like node_modules, 
-New method is used to initialize all config dirs with the correct paths.
+New method is used to initialize all config dirs with the correct paths and create folders in path  .config/go-npm
 
 
 ```
@@ -546,5 +570,309 @@ go test ./...
 ok      go-npm/packagejson      0.003s
 ```
 
+# Manifest component
+
+Ok, after parsing the package.json and get the dependencies to install, we need to obtain the manifest file from npm registry, 
+this is necessary to download the correspoding tarball for the package.
+
+For example if we have this express dependency in package.json
+
+```json
+"dependencies": {
+    "express": "^5.0.1"
+}
+```
+If we go to this url https://registry.npmjs.org/express and obtain the manifest file in json format.
+
+This return a json file with a lot of information about the package, versions, dist-tags, time, maintainers, etc.
+we will focus in versions for now, this is a object of all available entries, wit this structure
+
+```json
+"versions": {
+    "5.0.1": {
+      "name": "express",
+      "version": "5.0.1",
+      "dist": { 
+        "tarball": "https://registry.npmjs.org/express/-/express-5.0.1.tgz",
+        "shasum": "somehashvalue"
+      }
+    },
+   // more items
+}
+
+So for that we will create a new manifest package that will handle the manifest fetching and parsing.
+
+Create a new folder manifest and a file manifest.go inside it
+
+```bash
+mkdir manifest
+cd manifest
+touch manifest.go
+```
+
+manifest.go
+
+```go
+package manifest
+
+import (
+	"go-npm/utils"
+	"path/filepath"
+)
+
+type Manifest struct {
+	npmResgistryURL string
+	Path            string
+}
+
+func NewManifest(manifestPath string, npmRegistryURL string) (*Manifest, error) {
+	return &Manifest{
+		Path:            manifestPath,
+		npmResgistryURL: npmRegistryURL,
+	}, nil
+}
+
+func (m *Manifest) Download(pkg string) (int, error) {
+	url := m.npmResgistryURL + pkg
+	filename := filepath.Join(m.Path, pkg+".json")
+
+	statusCode, err := utils.DownloadFile(url, filename)
+
+	return statusCode, err
+}
+
+```
+
+We add a NewManifest method to expect as parameter two paramenter
+- manifestPath: path where to save the manifest file
+- npmRegistryURL: base url of npm registry
+
+
+in Dowload method we get as parameter the name of the package "express" for example,  
+after we create the full url to dowload and call a DownloadFile utility method that will handle the actual download of the file.
+
+Create utils package and a utils.go file inside it
+
+```sh
+mkdir utils
+cd utils
+touch utils.go
+```
+
+utils.go
+
+```go
+package utils
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func DownloadFile(url, filename string) (int, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return resp.StatusCode, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, fmt.Errorf("HTTP error: %s, %d %s", url, resp.StatusCode, resp.Status)
+	}
+
+	dir := filepath.Dir(filename)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to create directory structure: %w", err)
+	}
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to create file: %w", err)
+	}
+
+	_, err = io.Copy(file, resp.Body)
+	file.Close()
+
+	if err != nil {
+		os.Remove(filename)
+		return resp.StatusCode, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return resp.StatusCode, nil
+}
+
+func CreateDir(dirPath string) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		if err := os.Mkdir(dirPath, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+		}
+		fmt.Printf("Created directory: %s\n", dirPath)
+	}
+	return nil
+}
+```
+
+Here we define two function that will be useful in multiple components
+- DownloadFile: download a file from url and save it to filename path
+- CreateDir: create a directory if not exist in especified path
+
+Ok, we have the base to check if we can download a manifest file from npm,  to do that update the install file
+
+cmd/install.go
+```go
+func runInstall(cmd *cobra.Command, args []string) error {
+	fmt.Println("Starting installation process...")
+
+	cfg, err := config.New()
+	if err != nil {
+		panic(err)
+	}
+
+	manifest, err := manifest.NewManifest(cfg.ManifestDir, cfg.NpmRegistryURL)
+	if err != nil {
+		panic(err)
+	}
+
+	statusCode, err := manifest.Download("express")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Downloaded manifest for 'express' with status code: %d\n", statusCode)
+
+	return nil
+}
+```
+
+here we call config.New method to initialize config properties and folders needed for this project,  after call manifest Download to save manifest file in this path ~/.config/go-npm/manifest/express.json
+
+if everything work we should see the file create in our machine.
+
+```bash
+ls ~/.config/go-npm/manifest
+express.json
+```
+
+Like we did for packagejsongo package we need to create a new test file manifest_test.go
+
+```sh
+cd manifest
+touch manifest_test.go
+```
+
+add this code 
+```go
+package manifest
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func setupTestDirs(t *testing.T) string {
+	tmpDir := t.TempDir()
+	return tmpDir
+}
+
+func TestDownloadManifest_Download(t *testing.T) {
+	packageName := "express"
+
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) (string, string)
+		expectError bool
+		validate    func(t *testing.T, m *Manifest, packageName string, statusCode int)
+	}{
+		{
+			name: "Download express manifest",
+			setupFunc: func(t *testing.T) (string, string) {
+				configDir := setupTestDirs(t)
+				return configDir, packageName
+			},
+			expectError: false,
+			validate: func(t *testing.T, m *Manifest, packageName string, statusCode int) {
+				assert.Equal(t, http.StatusOK, statusCode, "Expected status code 200")
+
+				expectedFile := filepath.Join(m.Path, packageName+".json")
+				_, err := os.Stat(expectedFile)
+				assert.NoError(t, err, "Manifest file should exist")
+
+				info, err := os.Stat(expectedFile)
+				assert.NoError(t, err)
+				assert.Greater(t, info.Size(), int64(0), "File should not be empty")
+			},
+		},
+		{
+			name: "Error with invalid package name",
+			setupFunc: func(t *testing.T) (string, string) {
+				configDir := setupTestDirs(t)
+				return configDir, "this-package-does-not-exist-12345678"
+			},
+			expectError: true,
+			validate: func(t *testing.T, m *Manifest, packageName string, statusCode int) {
+				expectedFile := filepath.Join(m.Path, packageName+".json")
+				info, err := os.Stat(expectedFile)
+				if err == nil {
+					assert.Equal(t, int64(0), info.Size(), "File should be empty or not exist")
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			configDir, packageName := tc.setupFunc(t)
+			manifest, err := NewManifest(configDir, "https://registry.npmjs.org/")
+			assert.NoError(t, err)
+			statusCode, err := manifest.Download(packageName)
+
+			if tc.expectError {
+				assert.Error(t, err, "Expected an error")
+			} else {
+				assert.NoError(t, err, "Expected no error")
+			}
+
+			tc.validate(t, manifest, packageName, statusCode)
+		})
+	}
+}
+```
+
+in this test we add two test cases
+- Download express manifest: we expect to download the manifest file correctly and check that the file exist
+- Error with invalid package name: we expect an error when try to download a manifest for a non existent package
+
+We also add a function call setupTestDirs, this is very importatn because set configure the test to run in /temp directory and not make a conflict 
+with path ~/.config/go-npm/manifest.
+
+Also note that use the real npm registry url to download, another option is to use a mock libraty to prevent go to internet, but for simplicity and expect real world behavior we go this way.
+
+Run with 
+
+```bash
+go test ./... 
+```
+
+You should expect to not have any errors here.
+
+
+# Version component
 
 
