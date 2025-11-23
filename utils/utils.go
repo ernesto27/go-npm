@@ -56,7 +56,7 @@ func DownloadFile(url, filename string, etag string) (string, int, error) {
 
 func CreateDir(dirPath string) error {
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		if err := os.Mkdir(dirPath, 0755); err != nil {
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
 		}
 		fmt.Printf("Created directory: %s\n", dirPath)
