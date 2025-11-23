@@ -625,6 +625,123 @@ type Manifest struct {
 	Path            string
 }
 
+
+type NPMPackage struct {
+	ID       string             `json:"_id"`
+	Rev      string             `json:"_rev"`
+	Name     string             `json:"name"`
+	DistTags DistTags           `json:"dist-tags"`
+	Versions map[string]Version `json:"versions"`
+	Time     map[string]string  `json:"time"`
+	Bugs     any                `json:"bugs"`
+	License  any                `json:"license"`
+	Homepage any                `json:"homepage"`
+	Keywords any                `json:"keywords"`
+
+	Repository     any             `json:"repository"`
+	Description    string          `json:"description"`
+	Contributors   any             `json:"contributors"`
+	Maintainers    any             `json:"maintainers"`
+	Readme         string          `json:"readme"`
+	ReadmeFilename string          `json:"readmeFilename"`
+	Users          map[string]bool `json:"users"`
+}
+
+type DistTags struct {
+	Latest string `json:"latest"`
+	Next   string `json:"next"`
+}
+
+type Version struct {
+	Name                   string                 `json:"name"`
+	Version                string                 `json:"version"`
+	Author                 any                    `json:"author"`
+	License                any                    `json:"license"`
+	ID                     string                 `json:"_id"`
+	Maintainers            any                    `json:"maintainers"`
+	Homepage               any                    `json:"homepage"`
+	Bugs                   any                    `json:"bugs"`
+	Dist                   Dist                   `json:"dist"`
+	From                   string                 `json:"_from"`
+	Shasum                 string                 `json:"_shasum"`
+	Engines                any                    `json:"engines"`
+	GitHead                string                 `json:"gitHead"`
+	Scripts                any                    `json:"scripts"`
+	NPMUser                NPMUser                `json:"_npmUser"`
+	Repository             any                    `json:"repository"`
+	NPMVersion             string                 `json:"_npmVersion"`
+	Description            string                 `json:"description"`
+	Directories            map[string]interface{} `json:"directories"`
+	NodeVersion            string                 `json:"_nodeVersion"`
+	Dependencies           map[string]string      `json:"dependencies"`
+	DevDependencies        map[string]string      `json:"devDependencies"`
+	OptionalDependencies   map[string]string      `json:"optionalDependencies"`
+	PeerDependencies       map[string]string      `json:"peerDependencies"`
+	PeerDependenciesMeta   map[string]PeerMeta    `json:"peerDependenciesMeta"`
+	OS                     []string               `json:"os"`
+	CPU                    []string               `json:"cpu"`
+	HasShrinkwrap          bool                   `json:"_hasShrinkwrap"`
+	Keywords               any                    `json:"keywords"`
+	Contributors           any                    `json:"contributors"`
+	Files                  any                    `json:"files"`
+	NPMOperationalInternal NPMOperationalInternal `json:"_npmOperationalInternal"`
+	NPMSignature           string                 `json:"npm-signature"`
+}
+
+type PeerMeta struct {
+	Optional bool `json:"optional"`
+}
+
+type Author struct {
+	URL   string `json:"url"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type Maintainer struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type Contributor struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	URL   string `json:"url"`
+}
+
+type Bugs struct {
+	URL string `json:"url"`
+}
+
+type Dist struct {
+	Shasum       string      `json:"shasum"`
+	Tarball      string      `json:"tarball"`
+	Integrity    string      `json:"integrity"`
+	Signatures   []Signature `json:"signatures"`
+	FileCount    int         `json:"fileCount"`
+	UnpackedSize int         `json:"unpackedSize"`
+}
+
+type Signature struct {
+	Sig   string `json:"sig"`
+	KeyID string `json:"keyid"`
+}
+
+type NPMUser struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type Repository struct {
+	URL  string `json:"url"`
+	Type string `json:"type"`
+}
+
+type NPMOperationalInternal struct {
+	Tmp  string `json:"tmp"`
+	Host string `json:"host"`
+}
+
 func NewManifest(manifestPath string, npmRegistryURL string) (*Manifest, error) {
 	return &Manifest{
 		Path:            manifestPath,
@@ -632,14 +749,34 @@ func NewManifest(manifestPath string, npmRegistryURL string) (*Manifest, error) 
 	}, nil
 }
 
-func (m *Manifest) Download(pkg string) (int, error) {
+
+func (m *Manifest) Download(pkg string) (NPMPackage, error) {
 	url := m.npmResgistryURL + pkg
 	filename := filepath.Join(m.Path, pkg+".json")
+	npmPackage := NPMPackage{}
 
 	statusCode, err := utils.DownloadFile(url, filename)
+	if err != nil {
+		return npmPackage, fmt.Errorf("failed to download manifest for package %s: %w", pkg, err)
+	}
 
-	return statusCode, err
+	if statusCode != http.StatusOK {
+		return npmPackage, fmt.Errorf("failed to download manifest for package %s: status code %d", pkg, statusCode)
+	}
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return npmPackage, fmt.Errorf("failed to open file %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	if err := json.NewDecoder(file).Decode(&npmPackage); err != nil {
+		return npmPackage, fmt.Errorf("failed to parse JSON from file %s: %w", filename, err)
+	}
+
+	return npmPackage, err
 }
+
 
 ```
 
@@ -647,9 +784,15 @@ We add a NewManifest method to expect as parameter two paramenter
 - manifestPath: path where to save the manifest file
 - npmRegistryURL: base url of npm registry
 
+various structs are defined to represent the manifest file structure, the parent of all are NPMPackage.
 
-in Dowload method we get as parameter the name of the package "express" for example,  
-after we create the full url to dowload and call a DownloadFile utility method that will handle the actual download of the file.
+in Download method we get as parameter the name of the package "express" for example, 
+check statusCode response from call to DownloadFile function,  
+after we read file and unmarshal the json content into NPMPackage struct that represent the manifest file structure and return it.
+
+
+
+
 
 Create utils package and a utils.go file inside it
 
@@ -746,15 +889,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		panic(err)
 	}
 
-	statusCode, err := manifest.Download("express")
+	npmPackage, err := manifest.Download("express")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("Downloaded manifest for 'express' with status code: %d\n", statusCode)
+	fmt.Println(npmPackage.Name)
 
 	return nil
 }
+
 ```
 
 here we call config.New method to initialize config properties and folders needed for this project,  after call manifest Download to save manifest file in this path ~/.config/go-npm/manifest/express.json
@@ -778,7 +922,6 @@ add this code
 package manifest
 
 import (
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -798,7 +941,7 @@ func TestDownloadManifest_Download(t *testing.T) {
 		name        string
 		setupFunc   func(t *testing.T) (string, string)
 		expectError bool
-		validate    func(t *testing.T, m *Manifest, packageName string, statusCode int)
+		validate    func(t *testing.T, m *Manifest, packageName string)
 	}{
 		{
 			name: "Download express manifest",
@@ -807,9 +950,7 @@ func TestDownloadManifest_Download(t *testing.T) {
 				return configDir, packageName
 			},
 			expectError: false,
-			validate: func(t *testing.T, m *Manifest, packageName string, statusCode int) {
-				assert.Equal(t, http.StatusOK, statusCode, "Expected status code 200")
-
+			validate: func(t *testing.T, m *Manifest, packageName string) {
 				expectedFile := filepath.Join(m.Path, packageName+".json")
 				_, err := os.Stat(expectedFile)
 				assert.NoError(t, err, "Manifest file should exist")
@@ -826,7 +967,7 @@ func TestDownloadManifest_Download(t *testing.T) {
 				return configDir, "this-package-does-not-exist-12345678"
 			},
 			expectError: true,
-			validate: func(t *testing.T, m *Manifest, packageName string, statusCode int) {
+			validate: func(t *testing.T, m *Manifest, packageName string) {
 				expectedFile := filepath.Join(m.Path, packageName+".json")
 				info, err := os.Stat(expectedFile)
 				if err == nil {
@@ -841,7 +982,7 @@ func TestDownloadManifest_Download(t *testing.T) {
 			configDir, packageName := tc.setupFunc(t)
 			manifest, err := NewManifest(configDir, "https://registry.npmjs.org/")
 			assert.NoError(t, err)
-			statusCode, err := manifest.Download(packageName)
+			_, err = manifest.Download(packageName)
 
 			if tc.expectError {
 				assert.Error(t, err, "Expected an error")
@@ -849,10 +990,11 @@ func TestDownloadManifest_Download(t *testing.T) {
 				assert.NoError(t, err, "Expected no error")
 			}
 
-			tc.validate(t, manifest, packageName, statusCode)
+			tc.validate(t, manifest, packageName)
 		})
 	}
 }
+
 ```
 
 in this test we add two test cases
@@ -873,6 +1015,1334 @@ go test ./...
 You should expect to not have any errors here.
 
 
+
+
+
 # Version component
 
+Next step after manifiest is to get the correct version from package json dependencies,  
+there is a lot of formats that we can use
 
+examples:
+
+- Exact version: "express": "5.0.1"
+- Caret range: "express": "^5.0.1"
+- Tilde range: "express": "~5.0.1"
+- Greater than or equal to: "express": ">=5.0.1"
+- Less than: "express": "<6.0.0"
+
+Etc. 
+
+to handle this we will create a version component that will parse the version string and resolve the version to download.
+
+First install require lib to parse semver
+
+> SemVer is a versioning system that uses MAJOR.MINOR.PATCH to indicate breaking changes, new features, and bug fixes.
+
+```bash
+go get golang.org/x/mod/semver
+```
+
+
+
+
+Create a new folder version and a file version.go inside it
+
+```sh
+mkdir version
+cd version
+touch version.go
+```
+
+version.go
+
+```go
+package manager
+
+import (
+	"go-npm/manifest"
+	"strings"
+
+	"golang.org/x/mod/semver"
+)
+
+type VersionInfo struct {
+}
+
+func newVersionInfo() *VersionInfo {
+	return &VersionInfo{}
+}
+
+func (v *VersionInfo) getVersion(version string, npmPackage *manifest.NPMPackage) string {
+
+	if version == "" {
+		return npmPackage.DistTags.Latest
+	}
+
+	switch {
+	case strings.Contains(version, "||"):
+		orVersion := v.getVersionOr(version, npmPackage)
+		return orVersion
+	case strings.HasPrefix(version, "^"):
+		caretVersion := v.getVersionCaret(version, npmPackage)
+		return caretVersion
+	case strings.HasPrefix(version, "~"):
+		tildeVersion := v.getVersionTilde(version, npmPackage)
+		return tildeVersion
+	case strings.Contains(version, ">=") && (strings.Contains(version, "<") || strings.Contains(version, "<=")):
+		complexVersion := v.getVersionComplexRange(version, npmPackage)
+		return complexVersion
+	case strings.HasPrefix(version, ">="):
+		return v.getVersionGreaterOrEqual(version, npmPackage)
+	case strings.HasPrefix(version, "<="):
+		return v.getVersionLessOrEqual(version, npmPackage)
+	case strings.HasPrefix(version, ">"):
+		return v.getVersionGreater(version, npmPackage)
+	case strings.HasPrefix(version, "<"):
+		return v.getVersionLess(version, npmPackage)
+	case strings.Contains(version, " - "):
+		return v.getVersionHyphenRange(version, npmPackage)
+	case version == "*" || version == "latest":
+		return npmPackage.DistTags.Latest
+	case strings.Contains(version, "x") || strings.Contains(version, "X"):
+		wildcardVersion := v.getVersionWildcard(version, npmPackage)
+		return wildcardVersion
+	default:
+		parts := strings.Split(version, ".")
+		if len(parts) == 3 {
+			npmVersion, exists := npmPackage.Versions[version]
+			if exists && npmVersion.Version == version {
+				return npmVersion.Version
+			}
+
+		}
+		return npmPackage.DistTags.Latest
+	}
+}
+
+func (v *VersionInfo) getVersionCaret(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.Replace(version, "^", "", 1)
+	v1 := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		v2 := "v" + k
+		if semver.Compare(v2, v1) >= 0 {
+			majorBase := semver.Major(v1)
+			majorCandidate := semver.Major(v2)
+
+			if majorBase == majorCandidate {
+				// For major version 0, caret behaves like tilde (also match minor)
+				// ^0.2.3 means >=0.2.3 <0.3.0
+				if majorBase == "v0" {
+					minorBase := semver.MajorMinor(v1)
+					minorCandidate := semver.MajorMinor(v2)
+					if minorBase != minorCandidate {
+						continue
+					}
+				}
+
+				if bestSemver == "" || semver.Compare(v2, bestSemver) > 0 {
+					bestVersion = k
+					bestSemver = v2
+				}
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionTilde(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.Replace(version, "~", "", 1)
+	v1 := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		v2 := "v" + k
+		if semver.Compare(v2, v1) >= 0 {
+			// For tilde, we need to match the major and minor versions exactly
+			majorBase := semver.Major(v1)
+			minorBase := semver.MajorMinor(v1)
+			majorCandidate := semver.Major(v2)
+			minorCandidate := semver.MajorMinor(v2)
+
+			// Tilde allows patch-level changes if minor version is specified
+			// ~1.2.3 := >=1.2.3 <1.(2+1).0 := >=1.2.3 <1.3.0
+			if majorBase == majorCandidate && minorBase == minorCandidate {
+				if bestSemver == "" || semver.Compare(v2, bestSemver) > 0 {
+					bestVersion = k
+					bestSemver = v2
+				}
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionComplexRange(version string, npmPackage *manifest.NPMPackage) string {
+
+	var lowerBound, upperBound string
+	var lowerInclusive, upperInclusive bool
+
+	// Parse the complex range (e.g., ">= 2.1.2 < 3.0.0")
+	parts := strings.Fields(version)
+
+	for i := 0; i < len(parts)-1; i += 2 {
+		operator := parts[i]
+		versionStr := parts[i+1]
+
+		switch operator {
+		case ">=":
+			lowerBound = versionStr
+			lowerInclusive = true
+		case ">":
+			lowerBound = versionStr
+			lowerInclusive = false
+		case "<=":
+			upperBound = versionStr
+			upperInclusive = true
+		case "<":
+			upperBound = versionStr
+			upperInclusive = false
+		}
+	}
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+
+		// Check lower bound
+		if lowerBound != "" {
+			vLower := "v" + lowerBound
+			comparison := semver.Compare(vCandidate, vLower)
+			if lowerInclusive && comparison < 0 {
+				continue
+			}
+			if !lowerInclusive && comparison <= 0 {
+				continue
+			}
+		}
+
+		// Check upper bound
+		if upperBound != "" {
+			vUpper := "v" + upperBound
+			comparison := semver.Compare(vCandidate, vUpper)
+			if upperInclusive && comparison > 0 {
+				continue
+			}
+			if !upperInclusive && comparison >= 0 {
+				continue
+			}
+		}
+
+		// This version satisfies both bounds, check if it's the best one
+		if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+			bestVersion = k
+			bestSemver = vCandidate
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionWildcard(version string, npmPackage *manifest.NPMPackage) string {
+	normalized := strings.ToLower(version)
+	parts := strings.Split(normalized, ".")
+
+	// Handle different wildcard patterns:
+	// "x" or "x.x.x" -> any version (use latest)
+	// "1.x" or "1.x.x" -> any minor/patch in major 1
+	// "1.2.x" -> any patch in 1.2
+
+	if len(parts) == 1 && parts[0] == "x" {
+		// "x" means any version
+		return npmPackage.DistTags.Latest
+	}
+
+	var major, minor string
+	var matchMinor bool
+
+	if len(parts) >= 1 && parts[0] != "x" {
+		major = parts[0]
+	}
+	if len(parts) >= 2 && parts[1] != "x" {
+		minor = parts[1]
+		matchMinor = true
+	}
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		candidateParts := strings.Split(k, ".")
+
+		if len(candidateParts) < 2 {
+			continue
+		}
+
+		// Match major version if specified
+		if major != "" && candidateParts[0] != major {
+			continue
+		}
+
+		// Match minor version if specified
+		if matchMinor && len(candidateParts) >= 2 && candidateParts[1] != minor {
+			continue
+		}
+
+		// This version matches the pattern, check if it's the best one
+		if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+			bestVersion = k
+			bestSemver = vCandidate
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionOr(version string, npmPackage *manifest.NPMPackage) string {
+	// Split by || to get alternative constraints
+	constraints := strings.Split(version, "||")
+
+	var bestVersion string
+	var bestSemver string
+
+	// Try each constraint and find the highest version that satisfies any of them
+	for _, constraint := range constraints {
+		constraint = strings.TrimSpace(constraint)
+
+		// Recursively resolve each constraint
+		resolvedVersion := v.getVersion(constraint, npmPackage)
+
+		if resolvedVersion != "" {
+			vCandidate := "v" + resolvedVersion
+
+			// Keep track of the highest version found
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = resolvedVersion
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionGreaterOrEqual(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">="))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) >= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionLessOrEqual(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<="))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) <= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionGreater(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">"))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) > 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionLess(version string, npmPackage *manifest.NPMPackage) string {
+	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<"))
+	vBase := "v" + baseVersion
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+		if semver.Compare(vCandidate, vBase) < 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+
+func (v *VersionInfo) getVersionHyphenRange(version string, npmPackage *manifest.NPMPackage) string {
+	parts := strings.Split(version, " - ")
+	if len(parts) != 2 {
+		return npmPackage.DistTags.Latest
+	}
+
+	lowerBound := strings.TrimSpace(parts[0])
+	upperBound := strings.TrimSpace(parts[1])
+	vLower := "v" + lowerBound
+	vUpper := "v" + upperBound
+
+	var bestVersion string
+	var bestSemver string
+
+	for k := range npmPackage.Versions {
+		vCandidate := "v" + k
+
+		if semver.Compare(vCandidate, vLower) >= 0 && semver.Compare(vCandidate, vUpper) <= 0 {
+			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
+				bestVersion = k
+				bestSemver = vCandidate
+			}
+		}
+	}
+
+	return bestVersion
+}
+```
+
+getVersion expect two parameters.   
+- version: the version string from package.json, example 
+- npmPackage: the manifest struct obtained before
+
+The resolver reads the version requirement and determines whether it is a caret range, tilde range, wildcard, exact version, comparative range, or a tag like "latest".
+
+It then loads all available versions of the package and filters them using SemVer rules. Examples:
+
+- "^1.2.3" → any version ≥1.2.3 and <2.0.0
+
+- "~1.2.0" → any version ≥1.2.0 and <1.3.0
+
+- "1.x" → any version with major 1
+
+- "1.2.x" → any version in the 1.2 line
+
+- ">=1.0.0 <2.0.0" → versions from 1.0.0 up to (but not including) 2.0.0
+
+After filtering, the resolver sorts the versions by SemVer order and picks the highest version that satisfies the constraint.
+Example: for ["1.0.0", "1.5.0", "1.9.3"] and "^1.0.0", it selects "1.9.3".
+
+Add test  
+
+version/version_test.go
+
+```go
+package manager
+
+import (
+	"go-npm/manifest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func createTestPackage(versions []string, latest string) *manifest.NPMPackage {
+	pkg := &manifest.NPMPackage{
+		DistTags: manifest.DistTags{
+			Latest: latest,
+		},
+		Versions: make(map[string]manifest.Version),
+	}
+
+	for _, v := range versions {
+		pkg.Versions[v] = manifest.Version{
+			Version: v,
+		}
+	}
+
+	return pkg
+}
+
+func TestVersionInfo_getVersion_EmptyVersion(t *testing.T) {
+	vi := newVersionInfo()
+	pkg := createTestPackage([]string{"1.0.0", "1.1.0", "2.0.0"}, "2.0.0")
+
+	result := vi.getVersion("", pkg)
+	assert.Equal(t, "2.0.0", result, "Empty version should return latest")
+}
+
+func TestVersionInfo_getVersion_Latest(t *testing.T) {
+	vi := newVersionInfo()
+	pkg := createTestPackage([]string{"1.0.0", "1.5.0", "2.3.1"}, "2.3.1")
+
+	testCases := []struct {
+		name     string
+		version  string
+		expected string
+	}{
+		{
+			name:     "Asterisk wildcard",
+			version:  "*",
+			expected: "2.3.1",
+		},
+		{
+			name:     "Latest keyword",
+			version:  "latest",
+			expected: "2.3.1",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersion_ExactVersion(t *testing.T) {
+	vi := newVersionInfo()
+	pkg := createTestPackage([]string{"1.0.0", "1.2.3", "2.0.0"}, "2.0.0")
+
+	testCases := []struct {
+		name     string
+		version  string
+		expected string
+	}{
+		{
+			name:     "Exact version exists",
+			version:  "1.2.3",
+			expected: "1.2.3",
+		},
+		{
+			name:     "Exact version does not exist",
+			version:  "1.2.4",
+			expected: "2.0.0", // Falls back to latest
+		},
+		{
+			name:     "Exact version with two parts only",
+			version:  "1.2",
+			expected: "2.0.0", // Falls back to latest (not 3 parts)
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionCaret(t *testing.T) {
+	testCases := []struct {
+		name      string
+		version   string
+		versions  []string
+		latest    string
+		expected  string
+		expectErr bool
+	}{
+		{
+			name:     "Caret allows minor and patch updates - major 1",
+			version:  "^1.2.3",
+			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.3.0", "1.9.9", "2.0.0", "2.1.0"},
+			latest:   "2.1.0",
+			expected: "1.9.9", // Highest in major version 1
+		},
+		{
+			name:     "Caret with major version 0",
+			version:  "^0.2.3",
+			versions: []string{"0.1.0", "0.2.3", "0.2.5", "0.3.0", "1.0.0"},
+			latest:   "1.0.0",
+			expected: "0.2.5", // For 0.x, ^0.2.3 means >=0.2.3 <0.3.0 (only patch updates)
+		},
+		{
+			name:     "Caret with exact match only",
+			version:  "^1.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "1.0.0",
+		},
+		{
+			name:     "Caret with multiple candidates",
+			version:  "^2.0.0",
+			versions: []string{"1.9.9", "2.0.0", "2.0.1", "2.1.0", "2.5.7", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.5.7",
+		},
+		{
+			name:     "Caret with no matching versions",
+			version:  "^5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "", // No version satisfies
+		},
+		{
+			name:     "Caret with lower base version",
+			version:  "^1.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.1.0", "1.2.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionCaret(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionTilde(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Tilde allows patch updates only",
+			version:  "~1.2.3",
+			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.2.9", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.9", // Highest patch in 1.2.x
+		},
+		{
+			name:     "Tilde with exact match only",
+			version:  "~1.2.3",
+			versions: []string{"1.2.3", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.3",
+		},
+		{
+			name:     "Tilde with no higher patch version",
+			version:  "~2.1.5",
+			versions: []string{"2.0.0", "2.1.0", "2.1.3", "2.1.5", "2.2.0"},
+			latest:   "2.2.0",
+			expected: "2.1.5",
+		},
+		{
+			name:     "Tilde with multiple patch versions",
+			version:  "~3.0.0",
+			versions: []string{"2.9.9", "3.0.0", "3.0.1", "3.0.5", "3.0.10", "3.1.0"},
+			latest:   "3.1.0",
+			expected: "3.0.10",
+		},
+		{
+			name:     "Tilde with no matching versions",
+			version:  "~5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "", // No version satisfies
+		},
+		{
+			name:     "Tilde excludes minor version changes",
+			version:  "~1.2.0",
+			versions: []string{"1.1.9", "1.2.0", "1.2.1", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.1", // Does not include 1.3.0
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionTilde(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionComplexRange(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Range with >= and <",
+			version:  ">= 2.1.2 < 3.0.0",
+			versions: []string{"2.0.0", "2.1.0", "2.1.2", "2.5.0", "2.9.9", "3.0.0", "3.1.0"},
+			latest:   "3.1.0",
+			expected: "2.9.9",
+		},
+		{
+			name:     "Range with >= and <= (inclusive)",
+			version:  ">= 1.0.0 <= 2.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.1.0"},
+			latest:   "2.1.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Range with > and < (exclusive)",
+			version:  "> 1.0.0 < 2.0.0",
+			versions: []string{"1.0.0", "1.0.1", "1.5.0", "1.9.9", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.9.9",
+		},
+		{
+			name:     "Range with > and <= (mixed)",
+			version:  "> 1.5.0 <= 2.5.0",
+			versions: []string{"1.5.0", "1.6.0", "2.0.0", "2.5.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.5.0",
+		},
+		{
+			name:     "Range with no matching versions",
+			version:  ">= 5.0.0 < 6.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Narrow range with one match",
+			version:  ">= 1.2.3 < 1.2.5",
+			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.2.5", "1.3.0"},
+			latest:   "1.3.0",
+			expected: "1.2.4",
+		},
+		{
+			name:     "Range at boundary (lower bound inclusive)",
+			version:  ">= 1.0.0 < 2.0.0",
+			versions: []string{"0.9.9", "1.0.0", "1.5.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.5.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionComplexRange(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionWildcard(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Single x returns latest",
+			version:  "x",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Major.x matches any minor/patch in that major",
+			version:  "1.x",
+			versions: []string{"1.0.0", "1.2.0", "1.5.9", "2.0.0", "2.1.0"},
+			latest:   "2.1.0",
+			expected: "1.5.9",
+		},
+		{
+			name:     "Major.minor.x matches any patch",
+			version:  "2.1.x",
+			versions: []string{"2.0.0", "2.1.0", "2.1.5", "2.1.9", "2.2.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.1.9",
+		},
+		{
+			name:     "Case insensitive X",
+			version:  "1.X",
+			versions: []string{"1.0.0", "1.3.0", "1.7.2", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.7.2",
+		},
+		{
+			name:     "Major.X.X pattern",
+			version:  "2.X.X",
+			versions: []string{"1.9.9", "2.0.0", "2.1.0", "2.5.7", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.5.7",
+		},
+		{
+			name:     "No matching versions for wildcard",
+			version:  "5.x",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Wildcard with exact major match",
+			version:  "3.x",
+			versions: []string{"3.0.0", "3.0.1", "3.1.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "3.1.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionWildcard(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionOr(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "OR with two caret ranges",
+			version:  "^1.0.0 || ^2.0.0",
+			versions: []string{"1.0.0", "1.2.0", "1.9.9", "2.0.0", "2.1.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.1.0", // Highest between 1.9.9 and 2.1.0
+		},
+		{
+			name:     "OR with exact versions",
+			version:  "1.0.0 || 2.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.0.0", // Higher of the two
+		},
+		{
+			name:     "OR with one matching constraint",
+			version:  "^1.0.0 || ^5.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "1.5.0", // Only ^1.0.0 matches
+		},
+		{
+			name:     "OR with tilde and caret",
+			version:  "~1.2.3 || ^2.0.0",
+			versions: []string{"1.2.3", "1.2.5", "1.3.0", "2.0.0", "2.5.0"},
+			latest:   "2.5.0",
+			expected: "2.5.0", // ^2.0.0 gives higher version
+		},
+		{
+			name:     "OR with no matching constraints",
+			version:  "^5.0.0 || ^6.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "OR with wildcards",
+			version:  "1.x || 3.x",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0", "3.0.0", "3.2.0"},
+			latest:   "3.2.0",
+			expected: "3.2.0", // Highest between 1.5.0 and 3.2.0
+		},
+		{
+			name:     "OR with multiple constraints (3 options)",
+			version:  "^1.0.0 || ^2.0.0 || ^3.0.0",
+			versions: []string{"1.0.0", "1.1.0", "2.0.0", "2.2.0", "3.0.0", "3.5.0"},
+			latest:   "3.5.0",
+			expected: "3.5.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionOr(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersion_SimpleRanges(t *testing.T) {
+	vi := newVersionInfo()
+	pkg := createTestPackage([]string{"1.0.0", "2.0.0", "3.0.0"}, "3.0.0")
+
+	testCases := []struct {
+		name     string
+		version  string
+		expected string
+	}{
+		{
+			name:     "Greater than or equal",
+			version:  ">=1.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less than or equal",
+			version:  "<=2.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Greater than",
+			version:  ">1.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less than",
+			version:  "<2.0.0",
+			expected: "1.0.0",
+		},
+		{
+			name:     "Hyphen range",
+			version:  "1.0.0 - 2.0.0",
+			expected: "2.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionGreaterOrEqual(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Greater or equal - returns highest version >= base",
+			version:  ">=1.5.0",
+			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
+			latest:   "2.5.0",
+			expected: "2.5.0",
+		},
+		{
+			name:     "Greater or equal - exact match at base",
+			version:  ">=2.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater or equal - no matching versions",
+			version:  ">=5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Greater or equal - all versions match",
+			version:  ">=0.1.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater or equal - with patch versions",
+			version:  ">=1.2.3",
+			versions: []string{"1.2.0", "1.2.3", "1.2.5", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionGreaterOrEqual(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionLessOrEqual(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Less or equal - returns highest version <= base",
+			version:  "<=2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0", "2.5.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Less or equal - exact match at base",
+			version:  "<=2.0.0",
+			versions: []string{"1.0.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Less or equal - no matching versions",
+			version:  "<=0.5.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "",
+		},
+		{
+			name:     "Less or equal - all versions match",
+			version:  "<=10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less or equal - with patch versions",
+			version:  "<=1.2.5",
+			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.2.7", "1.3.0"},
+			latest:   "1.3.0",
+			expected: "1.2.5",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionLessOrEqual(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionGreater(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Greater than - returns highest version > base",
+			version:  ">1.5.0",
+			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
+			latest:   "2.5.0",
+			expected: "2.5.0",
+		},
+		{
+			name:     "Greater than - excludes exact match",
+			version:  ">2.0.0",
+			versions: []string{"1.0.0", "2.0.0", "2.0.1", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Greater than - no matching versions",
+			version:  ">5.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "5.0.0"},
+			latest:   "5.0.0",
+			expected: "",
+		},
+		{
+			name:     "Greater than - single match",
+			version:  ">1.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.0.1"},
+			latest:   "1.0.1",
+			expected: "1.0.1",
+		},
+		{
+			name:     "Greater than - with patch versions",
+			version:  ">1.2.3",
+			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionGreater(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionLess(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Less than - returns highest version < base",
+			version:  "<2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "1.9.9", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "1.9.9",
+		},
+		{
+			name:     "Less than - excludes exact match",
+			version:  "<2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.5.0",
+		},
+		{
+			name:     "Less than - no matching versions",
+			version:  "<1.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "",
+		},
+		{
+			name:     "Less than - all versions match",
+			version:  "<10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Less than - with patch versions",
+			version:  "<1.3.0",
+			versions: []string{"1.0.0", "1.2.3", "1.2.9", "1.3.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.2.9",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionLess(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersionHyphenRange(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Hyphen range - inclusive on both ends",
+			version:  "1.0.0 - 2.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.1.0"},
+			latest:   "2.1.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Hyphen range - narrow range",
+			version:  "1.2.3 - 1.2.5",
+			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.2.5", "1.3.0"},
+			latest:   "1.3.0",
+			expected: "1.2.5",
+		},
+		{
+			name:     "Hyphen range - no matching versions",
+			version:  "5.0.0 - 6.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
+			latest:   "4.0.0",
+			expected: "",
+		},
+		{
+			name:     "Hyphen range - single version in range",
+			version:  "1.5.0 - 2.5.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "2.0.0",
+		},
+		{
+			name:     "Hyphen range - all versions in range",
+			version:  "0.1.0 - 10.0.0",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			latest:   "3.0.0",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Hyphen range - exact boundaries",
+			version:  "2.0.0 - 3.0.0",
+			versions: []string{"1.9.9", "2.0.0", "2.5.0", "3.0.0", "3.0.1"},
+			latest:   "3.0.1",
+			expected: "3.0.0",
+		},
+		{
+			name:     "Hyphen range - malformed (missing space)",
+			version:  "1.0.0-2.0.0",
+			versions: []string{"1.0.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "2.0.0", // Falls back to latest
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersionHyphenRange(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_getVersion_Integration(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Caret range via getVersion",
+			version:  "^1.2.0",
+			versions: []string{"1.0.0", "1.2.0", "1.5.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.5.0",
+		},
+		{
+			name:     "Tilde range via getVersion",
+			version:  "~2.1.0",
+			versions: []string{"2.0.0", "2.1.0", "2.1.5", "2.2.0"},
+			latest:   "2.2.0",
+			expected: "2.1.5",
+		},
+		{
+			name:     "Complex range via getVersion",
+			version:  ">= 1.0.0 < 2.0.0",
+			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.5.0",
+		},
+		{
+			name:     "Wildcard via getVersion",
+			version:  "1.x",
+			versions: []string{"1.0.0", "1.9.0", "2.0.0"},
+			latest:   "2.0.0",
+			expected: "1.9.0",
+		},
+		{
+			name:     "OR constraint via getVersion",
+			version:  "^1.0.0 || ^2.0.0",
+			versions: []string{"1.0.0", "1.5.0", "2.0.0", "2.3.0"},
+			latest:   "2.3.0",
+			expected: "2.3.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestVersionInfo_EdgeCases(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		versions []string
+		latest   string
+		expected string
+	}{
+		{
+			name:     "Package with only one version",
+			version:  "^1.0.0",
+			versions: []string{"1.0.0"},
+			latest:   "1.0.0",
+			expected: "1.0.0",
+		},
+		{
+			name:     "Empty versions map",
+			version:  "^1.0.0",
+			versions: []string{},
+			latest:   "",
+			expected: "",
+		},
+		{
+			name:     "Version with prerelease tag (treated as string)",
+			version:  "1.0.0-beta.1",
+			versions: []string{"1.0.0-beta.1", "1.0.0"},
+			latest:   "1.0.0",
+			expected: "1.0.0", // Falls back to latest (not 3 numeric parts)
+		},
+		{
+			name:     "Very high version numbers",
+			version:  "^100.200.300",
+			versions: []string{"100.200.300", "100.200.400", "100.300.0", "200.0.0"},
+			latest:   "200.0.0",
+			expected: "100.300.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vi := newVersionInfo()
+			pkg := createTestPackage(tc.versions, tc.latest)
+			result := vi.getVersion(tc.version, pkg)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+```
+
+There is complete suite of test of most of the cases for version parsing and selection logic.
+
+Run test 
+```bash
+go test -v ./...
+```
+
+And verify all tests pass successfully.
