@@ -404,16 +404,31 @@ func (pm *PackageManager) InstallFromCache() error {
 					fmt.Printf("Converting git URL to tarball for %s\n", pkgName)
 				}
 
-				err := pm.tarball.Download(downloadURL)
-				if err != nil {
-					errChan <- err
-					return
+				// Lock based on tarball filename to prevent concurrent downloads of the same tarball
+				pm.downloadMu.Lock()
+				tarballLock, exists := pm.downloadLocks[tarballFilename]
+				if !exists {
+					tarballLock = &sync.Mutex{}
+					pm.downloadLocks[tarballFilename] = tarballLock
+				}
+				pm.downloadMu.Unlock()
+
+				tarballLock.Lock()
+				tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
+
+				// Check if file was already downloaded by another goroutine
+				if _, statErr := os.Stat(tarballPath); os.IsNotExist(statErr) {
+					err := pm.tarball.Download(downloadURL)
+					if err != nil {
+						tarballLock.Unlock()
+						errChan <- err
+						return
+					}
 				}
 
-				err = pm.extractor.Extract(
-					filepath.Join(pm.tarball.TarballPath, tarballFilename),
-					pathPkg,
-				)
+				err := pm.extractor.Extract(tarballPath, pathPkg)
+				tarballLock.Unlock()
+
 				if err != nil {
 					errChan <- err
 					return
@@ -864,23 +879,42 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						fmt.Printf("Skipping download for %s - invalid URL or empty version\n", item.Dep.Name)
 						return
 					}
-					err = pm.tarball.Download(tarballURL)
-					if err != nil {
-						if item.IsOptional || item.IsPeerOptional {
-							fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
+
+					// Lock based on tarball filename to prevent concurrent downloads of the same tarball
+					tarballFilename := path.Base(tarballURL)
+
+					pm.downloadMu.Lock()
+					tarballLock, exists := pm.downloadLocks[tarballFilename]
+					if !exists {
+						tarballLock = &sync.Mutex{}
+						pm.downloadLocks[tarballFilename] = tarballLock
+					}
+					pm.downloadMu.Unlock()
+
+					tarballLock.Lock()
+					tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
+
+					// Check if file was already downloaded by another goroutine
+					if _, statErr := os.Stat(tarballPath); os.IsNotExist(statErr) {
+						err = pm.tarball.Download(tarballURL)
+						if err != nil {
+							tarballLock.Unlock()
+							if item.IsOptional || item.IsPeerOptional {
+								fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
+								return
+							}
+							select {
+							case errChan <- err:
+								close(done)
+							default:
+							}
 							return
 						}
-						select {
-						case errChan <- err:
-							close(done)
-						default:
-						}
-						return
 					}
 
 					// Extract tarball (extractor strips first dir component for both npm and GitHub)
-					tarballPath := filepath.Join(pm.tarball.TarballPath, path.Base(tarballURL))
 					err = pm.extractor.Extract(tarballPath, configPackageVersion)
+					tarballLock.Unlock()
 
 					if err != nil {
 						if item.IsOptional || item.IsPeerOptional {
