@@ -141,11 +141,13 @@ func (bl *BinLinker) createSymlink(pkgPath, binName, binRelativePath string) err
 	binRelativePath = filepath.Clean(binRelativePath)
 
 	var targetPath string
+	var absoluteTargetPath string
 	linkPath := filepath.Join(bl.binPath, binName)
 
 	if bl.isGlobal {
 		// For global installations, use absolute path
 		targetPath = filepath.Join(pkgPath, binRelativePath)
+		absoluteTargetPath = targetPath
 	} else {
 		// For local installations, use relative path
 		// Get package name relative to node_modules
@@ -156,6 +158,12 @@ func (bl *BinLinker) createSymlink(pkgPath, binName, binRelativePath string) err
 			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 		targetPath = filepath.Join("..", relPath, binRelativePath)
+		absoluteTargetPath = filepath.Join(pkgPath, binRelativePath)
+	}
+
+	// Make the target file executable (same as npm does)
+	if err := bl.makeExecutable(absoluteTargetPath); err != nil {
+		return fmt.Errorf("failed to make %s executable: %w", absoluteTargetPath, err)
 	}
 
 	// Check if symlink already exists and is correct
@@ -174,6 +182,20 @@ func (bl *BinLinker) createSymlink(pkgPath, binName, binRelativePath string) err
 
 	fmt.Printf("Linked bin: %s -> %s\n", binName, targetPath)
 	return nil
+}
+
+func (bl *BinLinker) makeExecutable(filePath string) error {
+	// Get current file info
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+
+	// Add executable bit for user, group, and others (same as chmod +x)
+	// 0111 = --x--x--x (executable for all)
+	newMode := info.Mode() | 0111
+
+	return os.Chmod(filePath, newMode)
 }
 
 func (bl *BinLinker) UnlinkPackage(pkgName string) error {

@@ -114,6 +114,40 @@ func parseAliasVersion(version string) (string, string, bool) {
 	return actualPkg, actualVersion, true
 }
 
+// GitHubDependency represents a parsed GitHub dependency
+type GitHubDependency struct {
+	Owner string
+	Repo  string
+	Ref   string // tag, branch, or commit SHA (empty for default branch)
+}
+
+func parseGitHubDependency(version string) (*GitHubDependency, bool) {
+	if !strings.HasPrefix(version, "github:") {
+		return nil, false
+	}
+
+	spec := strings.TrimPrefix(version, "github:")
+
+	parts := strings.SplitN(spec, "#", 2)
+	repoPath := parts[0]
+
+	var ref string
+	if len(parts) == 2 {
+		ref = parts[1]
+	}
+
+	repoParts := strings.SplitN(repoPath, "/", 2)
+	if len(repoParts) != 2 {
+		return nil, false
+	}
+
+	return &GitHubDependency{
+		Owner: repoParts[0],
+		Repo:  repoParts[1],
+		Ref:   ref,
+	}, true
+}
+
 func BuildDependencies() (*Dependencies, error) {
 	cfg, err := config.New()
 	if err != nil {
@@ -359,14 +393,25 @@ func (pm *PackageManager) InstallFromCache() error {
 					fmt.Printf("Skipping package %s - empty resolved URL in lock file\n", item.Name)
 					return
 				}
-				err := pm.tarball.Download(item.Resolved)
+
+				// Check if this is a git URL and convert to tarball URL if needed
+				downloadURL := item.Resolved
+				tarballFilename := path.Base(item.Resolved)
+
+				if tarballURL, filename, isGit := convertGitURLToTarball(item.Resolved); isGit {
+					downloadURL = tarballURL
+					tarballFilename = filename
+					fmt.Printf("Converting git URL to tarball for %s\n", pkgName)
+				}
+
+				err := pm.tarball.Download(downloadURL)
 				if err != nil {
 					errChan <- err
 					return
 				}
 
 				err = pm.extractor.Extract(
-					filepath.Join(pm.tarball.TarballPath, path.Base(item.Resolved)),
+					filepath.Join(pm.tarball.TarballPath, tarballFilename),
 					pathPkg,
 				)
 				if err != nil {
@@ -501,8 +546,14 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	for name, version := range packageJson.Dependencies {
 		dep := packagejson.Dependency{Name: name, Version: version}
 
-		// Check for npm alias format: "npm:actual-package@version"
-		if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+		// Check for GitHub dependency format: "github:user/repo#ref"
+		if _, isGitHub := parseGitHubDependency(version); isGitHub {
+			// Store the GitHub dependency info in the version field temporarily
+			// The actual name will be determined after extracting the package
+			dep.ActualName = name
+			dep.Version = version // Keep the full GitHub spec
+		} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+			// Check for npm alias format: "npm:actual-package@version"
 			dep.ActualName = actualPkg
 			dep.Version = actualVersion
 		} else {
@@ -520,8 +571,12 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 		for name, version := range packageJson.DevDependencies {
 			dep := packagejson.Dependency{Name: name, Version: version}
 
-			// Check for npm alias format: "npm:actual-package@version"
-			if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+			// Check for GitHub dependency format: "github:user/repo#ref"
+			if _, isGitHub := parseGitHubDependency(version); isGitHub {
+				dep.ActualName = name
+				dep.Version = version
+			} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+				// Check for npm alias format: "npm:actual-package@version"
 				dep.ActualName = actualPkg
 				dep.Version = actualVersion
 			} else {
@@ -539,8 +594,12 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	for name, version := range packageJson.OptionalDependencies {
 		dep := packagejson.Dependency{Name: name, Version: version}
 
-		// Check for npm alias format: "npm:actual-package@version"
-		if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+		// Check for GitHub dependency format: "github:user/repo#ref"
+		if _, isGitHub := parseGitHubDependency(version); isGitHub {
+			dep.ActualName = name
+			dep.Version = version
+		} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+			// Check for npm alias format: "npm:actual-package@version"
 			dep.ActualName = actualPkg
 			dep.Version = actualVersion
 		} else {
@@ -625,57 +684,94 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					actualName = item.Dep.Name
 				}
 
-				pm.downloadMu.Lock()
-				pkgLock, exists := pm.downloadLocks[actualName]
-				if !exists {
-					pkgLock = &sync.Mutex{}
-					pm.downloadLocks[actualName] = pkgLock
-				}
-				pm.downloadMu.Unlock()
-
-				pkgLock.Lock()
-
-				manifestPath := filepath.Join(pm.manifest.Path, actualName+".json")
+				var version string
+				var tarballURL string
+				var resolvedURL string
 				var currentEtag string
+				var isGitHubDep bool
+				var commitSHA string
+				var npmPackage *NPMPackage
+				var err error
 
-				if _, err := os.Stat(manifestPath); err == nil {
-					currentEtag = pm.Etag.Get(actualName)
-				} else {
-					etag := pm.Etag.Get(actualName)
-					var downloadErr error
-					currentEtag, _, downloadErr = pm.manifest.Download(actualName, etag)
-					if downloadErr != nil {
-						pkgLock.Unlock()
+				// Check if this is a GitHub dependency
+				if ghDep, isGitHub := parseGitHubDependency(item.Dep.Version); isGitHub {
+					isGitHubDep = true
+
+					// Resolve GitHub ref to commit SHA
+					commitSHA, err = resolveGitHubRef(ghDep.Owner, ghDep.Repo, ghDep.Ref)
+					if err != nil {
 						if item.IsOptional || item.IsPeerOptional {
-							fmt.Printf("Warning: Optional dependency %s failed to download manifest: %v\n", item.Dep.Name, downloadErr)
+							fmt.Printf("Warning: Optional GitHub dependency %s failed to resolve: %v\n", item.Dep.Name, err)
 							return
 						}
 						select {
-						case errChan <- downloadErr:
+						case errChan <- fmt.Errorf("failed to resolve GitHub dependency %s: %w", item.Dep.Name, err):
 							close(done)
 						default:
 						}
 						return
 					}
-				}
 
-				npmPackage, err := pm.parseJsonManifest.parse(manifestPath)
-				pkgLock.Unlock()
+					// Use full commit SHA as version (needed for lock file and sub-dependency resolution)
+					version = commitSHA
+					tarballURL = buildGitHubTarballURL(ghDep.Owner, ghDep.Repo, commitSHA)
+					resolvedURL = buildGitHubResolvedURL(ghDep.Owner, ghDep.Repo, commitSHA)
 
-				if err != nil {
-					if item.IsOptional || item.IsPeerOptional {
-						fmt.Printf("Warning: Optional dependency %s failed to parse manifest: %v\n", item.Dep.Name, err)
+					fmt.Printf("Resolved GitHub %s/%s#%s to commit %s\n", ghDep.Owner, ghDep.Repo, ghDep.Ref, commitSHA[:8])
+				} else {
+					// NPM package - download manifest and resolve version
+					pm.downloadMu.Lock()
+					pkgLock, exists := pm.downloadLocks[actualName]
+					if !exists {
+						pkgLock = &sync.Mutex{}
+						pm.downloadLocks[actualName] = pkgLock
+					}
+					pm.downloadMu.Unlock()
+
+					pkgLock.Lock()
+
+					manifestPath := filepath.Join(pm.manifest.Path, actualName+".json")
+
+					if _, err := os.Stat(manifestPath); err == nil {
+						currentEtag = pm.Etag.Get(actualName)
+					} else {
+						etag := pm.Etag.Get(actualName)
+						var downloadErr error
+						currentEtag, _, downloadErr = pm.manifest.Download(actualName, etag)
+						if downloadErr != nil {
+							pkgLock.Unlock()
+							if item.IsOptional || item.IsPeerOptional {
+								fmt.Printf("Warning: Optional dependency %s failed to download manifest: %v\n", item.Dep.Name, downloadErr)
+								return
+							}
+							select {
+							case errChan <- downloadErr:
+								close(done)
+							default:
+							}
+							return
+						}
+					}
+
+					npmPackage, err = pm.parseJsonManifest.parse(manifestPath)
+					pkgLock.Unlock()
+
+					if err != nil {
+						if item.IsOptional || item.IsPeerOptional {
+							fmt.Printf("Warning: Optional dependency %s failed to parse manifest: %v\n", item.Dep.Name, err)
+							return
+						}
+						select {
+						case errChan <- err:
+							close(done)
+						default:
+						}
 						return
 					}
-					select {
-					case errChan <- err:
-						close(done)
-					default:
-					}
-					return
+
+					version = pm.versionInfo.getVersion(item.Dep.Version, npmPackage)
 				}
 
-				version := pm.versionInfo.getVersion(item.Dep.Version, npmPackage)
 				packageKey := actualName + "@" + version
 
 				if version == "" {
@@ -752,13 +848,16 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 				configPackageVersion := filepath.Join(pm.packagesPath, actualName+"@"+version)
 
-				tarballName := actualName
-				if strings.HasPrefix(actualName, "@") && strings.Contains(actualName, "/") {
-					parts := strings.Split(actualName, "/")
-					tarballName = parts[1]
+				// Build tarball URL if not already set (for npm packages)
+				if !isGitHubDep {
+					tarballName := actualName
+					if strings.HasPrefix(actualName, "@") && strings.Contains(actualName, "/") {
+						parts := strings.Split(actualName, "/")
+						tarballName = parts[1]
+					}
+					tarballURL = fmt.Sprintf("%s%s/-/%s-%s.tgz", npmRegistryURL, actualName, tarballName, version)
+					resolvedURL = tarballURL
 				}
-
-				tarballURL := fmt.Sprintf("%s%s/-/%s-%s.tgz", npmRegistryURL, actualName, tarballName, version)
 
 				if shouldProcessDeps && !utils.FolderExists(configPackageVersion) {
 					if tarballURL == "" || version == "" {
@@ -779,10 +878,9 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						return
 					}
 
-					err = pm.extractor.Extract(
-						filepath.Join(pm.tarball.TarballPath, path.Base(tarballURL)),
-						configPackageVersion,
-					)
+					// Extract tarball (extractor strips first dir component for both npm and GitHub)
+					tarballPath := filepath.Join(pm.tarball.TarballPath, path.Base(tarballURL))
+					err = pm.extractor.Extract(tarballPath, configPackageVersion)
 
 					if err != nil {
 						if item.IsOptional || item.IsPeerOptional {
@@ -802,17 +900,19 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				pckItem := packagejson.PackageItem{
 					Name:     item.Dep.Name,
 					Version:  version,
-					Resolved: tarballURL,
+					Resolved: resolvedURL,
 					Etag:     currentEtag,
 					Optional: item.IsOptional,
 				}
-				// Add OS and CPU fields if available
-				if versionData, ok := npmPackage.Versions[version]; ok {
-					if len(versionData.OS) > 0 {
-						pckItem.OS = versionData.OS
-					}
-					if len(versionData.CPU) > 0 {
-						pckItem.CPU = versionData.CPU
+				// Add OS and CPU fields if available (npm packages only)
+				if !isGitHubDep {
+					if versionData, ok := npmPackage.Versions[version]; ok {
+						if len(versionData.OS) > 0 {
+							pckItem.OS = versionData.OS
+						}
+						if len(versionData.CPU) > 0 {
+							pckItem.CPU = versionData.CPU
+						}
 					}
 				}
 				packageLock.Packages[packageResolved] = pckItem
