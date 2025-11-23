@@ -276,16 +276,17 @@ func TestCreateDir(t *testing.T) {
 			},
 		},
 		{
-			name: "Cannot create directory (parent doesn't exist)",
+			name: "Create directory with nested parents",
 			setupFunc: func(t *testing.T) string {
 				tmpDir := t.TempDir()
 				// Multiple levels deep without creating parents
 				return filepath.Join(tmpDir, "nonexistent", "parent", "child")
 			},
-			expectError: true,
+			expectError: false,
 			validate: func(t *testing.T, dirPath string) {
-				_, err := os.Stat(dirPath)
-				assert.True(t, os.IsNotExist(err))
+				info, err := os.Stat(dirPath)
+				assert.NoError(t, err)
+				assert.True(t, info.IsDir())
 			},
 		},
 		{
