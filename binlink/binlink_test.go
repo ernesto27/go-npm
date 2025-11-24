@@ -35,6 +35,10 @@ func createTestPackage(t *testing.T, nodeModulesPath, pkgName string, binField i
 	assert.NoError(t, err)
 
 	createTestPackageJSON(t, pkgPath, pkgName, binField)
+
+	// Create actual bin files based on binField
+	createBinFiles(t, pkgPath, binField)
+
 	return pkgPath
 }
 
@@ -49,7 +53,34 @@ func createScopedPackage(t *testing.T, nodeModulesPath, scope, pkgName string, b
 
 	fullName := scope + "/" + pkgName
 	createTestPackageJSON(t, pkgPath, fullName, binField)
+
+	// Create actual bin files based on binField
+	createBinFiles(t, pkgPath, binField)
+
 	return pkgPath
+}
+
+func createBinFiles(t *testing.T, pkgPath string, binField interface{}) {
+	switch v := binField.(type) {
+	case string:
+		// String format - single bin file
+		binPath := filepath.Join(pkgPath, v)
+		binDir := filepath.Dir(binPath)
+		err := os.MkdirAll(binDir, 0755)
+		assert.NoError(t, err)
+		err = os.WriteFile(binPath, []byte("#!/usr/bin/env node\nconsole.log('bin');"), 0644)
+		assert.NoError(t, err)
+	case map[string]string:
+		// Object format - multiple bin files
+		for _, binRelPath := range v {
+			binPath := filepath.Join(pkgPath, binRelPath)
+			binDir := filepath.Dir(binPath)
+			err := os.MkdirAll(binDir, 0755)
+			assert.NoError(t, err)
+			err = os.WriteFile(binPath, []byte("#!/usr/bin/env node\nconsole.log('bin');"), 0644)
+			assert.NoError(t, err)
+		}
+	}
 }
 
 func verifySymlink(t *testing.T, linkPath, expectedTarget string) {
@@ -364,7 +395,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.CreateBinDirectory()
 
 				pkgPath := filepath.Join(nodeModules, "express")
-				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
+				binDir := filepath.Join(pkgPath, "bin")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "cli.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('cli');"), 0644)
 
 				return bl, pkgPath, "express", "./bin/cli.js"
 			},
@@ -384,7 +420,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.CreateBinDirectory()
 
 				pkgPath := filepath.Join(nodeModules, "@babel", "cli")
-				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
+				binDir := filepath.Join(pkgPath, "bin")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "babel.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('babel');"), 0644)
 
 				return bl, pkgPath, "babel", "./bin/babel.js"
 			},
@@ -406,7 +447,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.SetGlobalMode(nodeModules, binPath)
 
 				pkgPath := filepath.Join(nodeModules, "nodemon")
-				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
+				binDir := filepath.Join(pkgPath, "bin")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "nodemon.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('nodemon');"), 0644)
 
 				return bl, pkgPath, "nodemon", "./bin/nodemon.js"
 			},
@@ -429,7 +475,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.CreateBinDirectory()
 
 				pkgPath := filepath.Join(nodeModules, "jest")
-				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
+				binDir := filepath.Join(pkgPath, "bin")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "jest.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('jest');"), 0644)
 
 				// Create existing symlink
 				linkPath := filepath.Join(bl.binPath, "jest")
@@ -454,7 +505,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.CreateBinDirectory()
 
 				pkgPath := filepath.Join(nodeModules, "webpack")
-				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
+				binDir := filepath.Join(pkgPath, "bin")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "webpack.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('webpack');"), 0644)
 
 				// Create symlink with wrong target
 				linkPath := filepath.Join(bl.binPath, "webpack")
@@ -480,6 +536,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "test-pkg")
 				os.MkdirAll(pkgPath, 0755)
 
+				// Create the actual bin file
+				binFile := filepath.Join(pkgPath, "cli.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('cli');"), 0644)
+
 				return bl, pkgPath, "test", "./cli.js"
 			},
 			expectError: false,
@@ -498,7 +558,12 @@ func TestCreateSymlink(t *testing.T) {
 				bl.CreateBinDirectory()
 
 				pkgPath := filepath.Join(nodeModules, "deep-pkg")
-				os.MkdirAll(filepath.Join(pkgPath, "dist", "bin", "commands"), 0755)
+				binDir := filepath.Join(pkgPath, "dist", "bin", "commands")
+				os.MkdirAll(binDir, 0755)
+
+				// Create the actual bin file
+				binFile := filepath.Join(binDir, "cli.js")
+				os.WriteFile(binFile, []byte("#!/usr/bin/env node\nconsole.log('cli');"), 0644)
 
 				return bl, pkgPath, "deep", "./dist/bin/commands/cli.js"
 			},
