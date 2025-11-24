@@ -1,0 +1,61 @@
+package utils
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func DownloadFile(url, filename string) (int, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return resp.StatusCode, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, fmt.Errorf("HTTP error: %s, %d %s", url, resp.StatusCode, resp.Status)
+	}
+
+	dir := filepath.Dir(filename)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to create directory structure: %w", err)
+	}
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to create file: %w", err)
+	}
+
+	_, err = io.Copy(file, resp.Body)
+	file.Close()
+
+	if err != nil {
+		os.Remove(filename)
+		return resp.StatusCode, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return resp.StatusCode, nil
+}
+
+func CreateDir(dirPath string) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		if err := os.Mkdir(dirPath, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+		}
+		fmt.Printf("Created directory: %s\n", dirPath)
+	}
+	return nil
+}
