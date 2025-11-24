@@ -1,9 +1,10 @@
 package manager
 
 import (
+	"sort"
 	"strings"
 
-	"golang.org/x/mod/semver"
+	"github.com/Masterminds/semver/v3"
 )
 
 type VersionInfo struct {
@@ -13,374 +14,75 @@ func newVersionInfo() *VersionInfo {
 	return &VersionInfo{}
 }
 
+// getVersion resolves a version constraint to a specific version string
+// It supports all npm semver ranges: ^, ~, >=, <=, >, <, ||, hyphen ranges, wildcards, and exact versions
 func (v *VersionInfo) getVersion(version string, npmPackage *NPMPackage) string {
-
-	if version == "" {
+	// Handle empty version or "latest" keyword
+	if version == "" || version == "latest" || version == "*" {
 		return npmPackage.DistTags.Latest
 	}
 
-	switch {
-	case strings.Contains(version, "||"):
-		orVersion := v.getVersionOr(version, npmPackage)
-		return orVersion
-	case strings.HasPrefix(version, "^"):
-		caretVersion := v.getVersionCaret(version, npmPackage)
-		return caretVersion
-	case strings.HasPrefix(version, "~"):
-		tildeVersion := v.getVersionTilde(version, npmPackage)
-		return tildeVersion
-	case strings.Contains(version, ">=") && (strings.Contains(version, "<") || strings.Contains(version, "<=")):
-		complexVersion := v.getVersionComplexRange(version, npmPackage)
-		return complexVersion
-	case strings.HasPrefix(version, ">="):
-		return v.getVersionGreaterOrEqual(version, npmPackage)
-	case strings.HasPrefix(version, "<="):
-		return v.getVersionLessOrEqual(version, npmPackage)
-	case strings.HasPrefix(version, ">"):
-		return v.getVersionGreater(version, npmPackage)
-	case strings.HasPrefix(version, "<"):
-		return v.getVersionLess(version, npmPackage)
-	case strings.Contains(version, " - "):
-		return v.getVersionHyphenRange(version, npmPackage)
-	case version == "*" || version == "latest":
-		return npmPackage.DistTags.Latest
-	case strings.Contains(version, "x") || strings.Contains(version, "X"):
-		wildcardVersion := v.getVersionWildcard(version, npmPackage)
-		return wildcardVersion
-	default:
-		parts := strings.Split(version, ".")
-		if len(parts) == 3 {
-			npmVersion, exists := npmPackage.Versions[version]
-			if exists && npmVersion.Version == version {
-				return npmVersion.Version
-			}
-
-		}
-		return npmPackage.DistTags.Latest
-	}
-}
-
-func (v *VersionInfo) getVersionCaret(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.Replace(version, "^", "", 1)
-	v1 := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		v2 := "v" + k
-		if semver.Compare(v2, v1) >= 0 {
-			majorBase := semver.Major(v1)
-			majorCandidate := semver.Major(v2)
-
-			if majorBase == majorCandidate {
-				// For major version 0, caret behaves like tilde (also match minor)
-				// ^0.2.3 means >=0.2.3 <0.3.0
-				if majorBase == "v0" {
-					minorBase := semver.MajorMinor(v1)
-					minorCandidate := semver.MajorMinor(v2)
-					if minorBase != minorCandidate {
-						continue
-					}
-				}
-
-				if bestSemver == "" || semver.Compare(v2, bestSemver) > 0 {
-					bestVersion = k
-					bestSemver = v2
-				}
-			}
-		}
+	// Check if version is a known dist-tag
+	if version == "next" && npmPackage.DistTags.Next != "" {
+		return npmPackage.DistTags.Next
 	}
 
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionTilde(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.Replace(version, "~", "", 1)
-	v1 := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		v2 := "v" + k
-		if semver.Compare(v2, v1) >= 0 {
-			// For tilde, we need to match the major and minor versions exactly
-			majorBase := semver.Major(v1)
-			minorBase := semver.MajorMinor(v1)
-			majorCandidate := semver.Major(v2)
-			minorCandidate := semver.MajorMinor(v2)
-
-			// Tilde allows patch-level changes if minor version is specified
-			// ~1.2.3 := >=1.2.3 <1.(2+1).0 := >=1.2.3 <1.3.0
-			if majorBase == majorCandidate && minorBase == minorCandidate {
-				if bestSemver == "" || semver.Compare(v2, bestSemver) > 0 {
-					bestVersion = k
-					bestSemver = v2
-				}
-			}
+	// Try to parse as semver constraint
+	constraint, err := semver.NewConstraint(version)
+	if err != nil {
+		// If parsing fails, try as exact version match
+		if versionObj, exists := npmPackage.Versions[version]; exists {
+			return versionObj.Version
 		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionComplexRange(version string, npmPackage *NPMPackage) string {
-
-	var lowerBound, upperBound string
-	var lowerInclusive, upperInclusive bool
-
-	// Parse the complex range (e.g., ">= 2.1.2 < 3.0.0")
-	parts := strings.Fields(version)
-
-	for i := 0; i < len(parts)-1; i += 2 {
-		operator := parts[i]
-		versionStr := parts[i+1]
-
-		switch operator {
-		case ">=":
-			lowerBound = versionStr
-			lowerInclusive = true
-		case ">":
-			lowerBound = versionStr
-			lowerInclusive = false
-		case "<=":
-			upperBound = versionStr
-			upperInclusive = true
-		case "<":
-			upperBound = versionStr
-			upperInclusive = false
-		}
-	}
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-
-		// Check lower bound
-		if lowerBound != "" {
-			vLower := "v" + lowerBound
-			comparison := semver.Compare(vCandidate, vLower)
-			if lowerInclusive && comparison < 0 {
-				continue
-			}
-			if !lowerInclusive && comparison <= 0 {
-				continue
-			}
-		}
-
-		// Check upper bound
-		if upperBound != "" {
-			vUpper := "v" + upperBound
-			comparison := semver.Compare(vCandidate, vUpper)
-			if upperInclusive && comparison > 0 {
-				continue
-			}
-			if !upperInclusive && comparison >= 0 {
-				continue
-			}
-		}
-
-		// This version satisfies both bounds, check if it's the best one
-		if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-			bestVersion = k
-			bestSemver = vCandidate
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionWildcard(version string, npmPackage *NPMPackage) string {
-	normalized := strings.ToLower(version)
-	parts := strings.Split(normalized, ".")
-
-	// Handle different wildcard patterns:
-	// "x" or "x.x.x" -> any version (use latest)
-	// "1.x" or "1.x.x" -> any minor/patch in major 1
-	// "1.2.x" -> any patch in 1.2
-
-	if len(parts) == 1 && parts[0] == "x" {
-		// "x" means any version
+		// Fallback to latest for invalid constraints
 		return npmPackage.DistTags.Latest
 	}
 
-	var major, minor string
-	var matchMinor bool
-
-	if len(parts) >= 1 && parts[0] != "x" {
-		major = parts[0]
-	}
-	if len(parts) >= 2 && parts[1] != "x" {
-		minor = parts[1]
-		matchMinor = true
-	}
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-		candidateParts := strings.Split(k, ".")
-
-		if len(candidateParts) < 2 {
-			continue
+	// Filter versions that match the constraint
+	var matchingVersions []*semver.Version
+	for vStr := range npmPackage.Versions {
+		semverVersion, err := semver.NewVersion(vStr)
+		if err != nil {
+			continue // Skip invalid versions in registry
 		}
-
-		// Match major version if specified
-		if major != "" && candidateParts[0] != major {
-			continue
-		}
-
-		// Match minor version if specified
-		if matchMinor && len(candidateParts) >= 2 && candidateParts[1] != minor {
-			continue
-		}
-
-		// This version matches the pattern, check if it's the best one
-		if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-			bestVersion = k
-			bestSemver = vCandidate
+		if constraint.Check(semverVersion) {
+			matchingVersions = append(matchingVersions, semverVersion)
 		}
 	}
 
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionOr(version string, npmPackage *NPMPackage) string {
-	// Split by || to get alternative constraints
-	constraints := strings.Split(version, "||")
-
-	var bestVersion string
-	var bestSemver string
-
-	// Try each constraint and find the highest version that satisfies any of them
-	for _, constraint := range constraints {
-		constraint = strings.TrimSpace(constraint)
-
-		// Recursively resolve each constraint
-		resolvedVersion := v.getVersion(constraint, npmPackage)
-
-		if resolvedVersion != "" {
-			vCandidate := "v" + resolvedVersion
-
-			// Keep track of the highest version found
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = resolvedVersion
-				bestSemver = vCandidate
-			}
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionGreaterOrEqual(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">="))
-	vBase := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-		if semver.Compare(vCandidate, vBase) >= 0 {
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = k
-				bestSemver = vCandidate
-			}
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionLessOrEqual(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<="))
-	vBase := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-		if semver.Compare(vCandidate, vBase) <= 0 {
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = k
-				bestSemver = vCandidate
-			}
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionGreater(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, ">"))
-	vBase := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-		if semver.Compare(vCandidate, vBase) > 0 {
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = k
-				bestSemver = vCandidate
-			}
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionLess(version string, npmPackage *NPMPackage) string {
-	baseVersion := strings.TrimSpace(strings.TrimPrefix(version, "<"))
-	vBase := "v" + baseVersion
-
-	var bestVersion string
-	var bestSemver string
-
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-		if semver.Compare(vCandidate, vBase) < 0 {
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = k
-				bestSemver = vCandidate
-			}
-		}
-	}
-
-	return bestVersion
-}
-
-func (v *VersionInfo) getVersionHyphenRange(version string, npmPackage *NPMPackage) string {
-	parts := strings.Split(version, " - ")
-	if len(parts) != 2 {
+	// If no versions match, fallback to latest
+	if len(matchingVersions) == 0 {
 		return npmPackage.DistTags.Latest
 	}
 
-	lowerBound := strings.TrimSpace(parts[0])
-	upperBound := strings.TrimSpace(parts[1])
-	vLower := "v" + lowerBound
-	vUpper := "v" + upperBound
+	// Sort versions and return the highest
+	sort.Sort(semver.Collection(matchingVersions))
+	bestVersion := matchingVersions[len(matchingVersions)-1]
 
-	var bestVersion string
-	var bestSemver string
+	// Return the original version string (preserves exact format from registry)
+	originalVersion := bestVersion.Original()
 
-	for k := range npmPackage.Versions {
-		vCandidate := "v" + k
-
-		if semver.Compare(vCandidate, vLower) >= 0 && semver.Compare(vCandidate, vUpper) <= 0 {
-			if bestSemver == "" || semver.Compare(vCandidate, bestSemver) > 0 {
-				bestVersion = k
-				bestSemver = vCandidate
-			}
-		}
+	// Fallback to String() if Original() doesn't exist in the map (normalization edge case)
+	if _, exists := npmPackage.Versions[originalVersion]; exists {
+		return originalVersion
 	}
 
-	return bestVersion
+	stringVersion := bestVersion.String()
+	if _, exists := npmPackage.Versions[stringVersion]; exists {
+		return stringVersion
+	}
+
+	// If neither exists (shouldn't happen), try with "v" prefix removed
+	trimmedOriginal := strings.TrimPrefix(originalVersion, "v")
+	if _, exists := npmPackage.Versions[trimmedOriginal]; exists {
+		return trimmedOriginal
+	}
+
+	trimmedString := strings.TrimPrefix(stringVersion, "v")
+	if _, exists := npmPackage.Versions[trimmedString]; exists {
+		return trimmedString
+	}
+
+	// Last resort: return the original format
+	return trimmedOriginal
 }
