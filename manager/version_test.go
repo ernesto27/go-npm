@@ -80,9 +80,9 @@ func TestVersionInfo_getVersion_ExactVersion(t *testing.T) {
 			expected: "2.0.0", // Falls back to latest
 		},
 		{
-			name:     "Exact version with two parts only",
+			name:     "Version with two parts (treated as range)",
 			version:  "1.2",
-			expected: "2.0.0", // Falls back to latest (not 3 parts)
+			expected: "1.2.3", // "1.2" means ">=1.2.0 <1.3.0", returns highest match
 		},
 	}
 
@@ -151,8 +151,13 @@ func TestVersionInfo_getVersionCaret(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionCaret(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -213,8 +218,13 @@ func TestVersionInfo_getVersionTilde(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionTilde(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -282,8 +292,13 @@ func TestVersionInfo_getVersionComplexRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionComplexRange(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -351,8 +366,13 @@ func TestVersionInfo_getVersionWildcard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionWildcard(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -420,8 +440,13 @@ func TestVersionInfo_getVersionOr(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionOr(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -519,8 +544,13 @@ func TestVersionInfo_getVersionGreaterOrEqual(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionGreaterOrEqual(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -574,8 +604,13 @@ func TestVersionInfo_getVersionLessOrEqual(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionLessOrEqual(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -629,8 +664,13 @@ func TestVersionInfo_getVersionGreater(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionGreater(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -684,8 +724,13 @@ func TestVersionInfo_getVersionLess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionLess(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -753,8 +798,13 @@ func TestVersionInfo_getVersionHyphenRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersionHyphenRange(tc.version, pkg)
-			assert.Equal(t, tc.expected, result)
+			result := vi.getVersion(tc.version, pkg)
+			if tc.expected == "" {
+				// When no version matches, getVersion falls back to latest
+				assert.Equal(t, tc.latest, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }
@@ -837,11 +887,11 @@ func TestVersionInfo_EdgeCases(t *testing.T) {
 			expected: "",
 		},
 		{
-			name:     "Version with prerelease tag (treated as string)",
+			name:     "Version with prerelease tag (exact match)",
 			version:  "1.0.0-beta.1",
 			versions: []string{"1.0.0-beta.1", "1.0.0"},
 			latest:   "1.0.0",
-			expected: "1.0.0", // Falls back to latest (not 3 numeric parts)
+			expected: "1.0.0-beta.1", // Returns exact match when prerelease version exists
 		},
 		{
 			name:     "Very high version numbers",

@@ -35,6 +35,17 @@ func createTestPackage(t *testing.T, nodeModulesPath, pkgName string, binField i
 	assert.NoError(t, err)
 
 	createTestPackageJSON(t, pkgPath, pkgName, binField)
+
+	// Create actual bin files based on binField type
+	switch v := binField.(type) {
+	case string:
+		createBinFile(t, pkgPath, v)
+	case map[string]string:
+		for _, binPath := range v {
+			createBinFile(t, pkgPath, binPath)
+		}
+	}
+
 	return pkgPath
 }
 
@@ -49,6 +60,17 @@ func createScopedPackage(t *testing.T, nodeModulesPath, scope, pkgName string, b
 
 	fullName := scope + "/" + pkgName
 	createTestPackageJSON(t, pkgPath, fullName, binField)
+
+	// Create actual bin files based on binField type
+	switch v := binField.(type) {
+	case string:
+		createBinFile(t, pkgPath, v)
+	case map[string]string:
+		for _, binPath := range v {
+			createBinFile(t, pkgPath, binPath)
+		}
+	}
+
 	return pkgPath
 }
 
@@ -56,6 +78,18 @@ func verifySymlink(t *testing.T, linkPath, expectedTarget string) {
 	target, err := os.Readlink(linkPath)
 	assert.NoError(t, err, "Failed to read symlink at %s", linkPath)
 	assert.Equal(t, expectedTarget, target, "Symlink target mismatch")
+}
+
+func createBinFile(t *testing.T, pkgPath, binRelPath string) {
+	binFullPath := filepath.Join(pkgPath, binRelPath)
+	binDir := filepath.Dir(binFullPath)
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err)
+
+	// Create a simple shell script content
+	content := []byte("#!/usr/bin/env node\nconsole.log('test');\n")
+	err = os.WriteFile(binFullPath, content, 0644)
+	assert.NoError(t, err)
 }
 
 // Tests for NewBinLinker
@@ -366,7 +400,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "express")
 				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
 
-				return bl, pkgPath, "express", "./bin/cli.js"
+				binRelPath := "./bin/cli.js"
+				createBinFile(t, pkgPath, binRelPath)
+
+				return bl, pkgPath, "express", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -386,7 +423,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "@babel", "cli")
 				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
 
-				return bl, pkgPath, "babel", "./bin/babel.js"
+				binRelPath := "./bin/babel.js"
+				createBinFile(t, pkgPath, binRelPath)
+
+				return bl, pkgPath, "babel", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -408,7 +448,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "nodemon")
 				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
 
-				return bl, pkgPath, "nodemon", "./bin/nodemon.js"
+				binRelPath := "./bin/nodemon.js"
+				createBinFile(t, pkgPath, binRelPath)
+
+				return bl, pkgPath, "nodemon", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -431,12 +474,15 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "jest")
 				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
 
+				binRelPath := "./bin/jest.js"
+				createBinFile(t, pkgPath, binRelPath)
+
 				// Create existing symlink
 				linkPath := filepath.Join(bl.binPath, "jest")
 				targetPath := "../jest/bin/jest.js"
 				os.Symlink(targetPath, linkPath)
 
-				return bl, pkgPath, "jest", "./bin/jest.js"
+				return bl, pkgPath, "jest", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -456,11 +502,14 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "webpack")
 				os.MkdirAll(filepath.Join(pkgPath, "bin"), 0755)
 
+				binRelPath := "./bin/webpack.js"
+				createBinFile(t, pkgPath, binRelPath)
+
 				// Create symlink with wrong target
 				linkPath := filepath.Join(bl.binPath, "webpack")
 				os.Symlink("../old/path.js", linkPath)
 
-				return bl, pkgPath, "webpack", "./bin/webpack.js"
+				return bl, pkgPath, "webpack", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -480,7 +529,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "test-pkg")
 				os.MkdirAll(pkgPath, 0755)
 
-				return bl, pkgPath, "test", "./cli.js"
+				binRelPath := "./cli.js"
+				createBinFile(t, pkgPath, binRelPath)
+
+				return bl, pkgPath, "test", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
@@ -500,7 +552,10 @@ func TestCreateSymlink(t *testing.T) {
 				pkgPath := filepath.Join(nodeModules, "deep-pkg")
 				os.MkdirAll(filepath.Join(pkgPath, "dist", "bin", "commands"), 0755)
 
-				return bl, pkgPath, "deep", "./dist/bin/commands/cli.js"
+				binRelPath := "./dist/bin/commands/cli.js"
+				createBinFile(t, pkgPath, binRelPath)
+
+				return bl, pkgPath, "deep", binRelPath
 			},
 			expectError: false,
 			validate: func(t *testing.T, bl *BinLinker, binName string) {
