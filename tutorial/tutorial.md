@@ -1882,3 +1882,364 @@ dist: {
 	]
 },
 ```
+
+Create a tarball package
+
+```bash
+mkdir tarball
+cd tarball
+touch tarball.go
+```
+
+add this content
+
+tarball/tarball.go
+
+```go
+package tarball
+
+import (
+	"fmt"
+	"go-npm/manifest"
+	"go-npm/utils"
+	"os"
+	"path"
+	"path/filepath"
+)
+
+type Tarball struct {
+	TarballPath string
+}
+
+func NewTarball() *Tarball {
+	tarballPath := os.TempDir()
+	return &Tarball{TarballPath: tarballPath}
+}
+
+
+func (d *Tarball) Download(version string, npmPackage manifest.NPMPackage) (string, error) {
+	versionData, ok := npmPackage.Versions[version]
+	if !ok {
+		return "", fmt.Errorf("version %s not found in package %s", version, npmPackage.Name)
+	}
+
+	url := versionData.Dist.Tarball
+	filename := path.Base(url)
+	filePath := filepath.Join(d.TarballPath, filename)
+
+	_, err := utils.DownloadFile(url, filePath)
+	return filePath, err
+}
+```
+
+In NewTarball we set a variable that represent the place i which we saved the download files,  we will use the /tmp directory or our system ( later we extracted this and copy to node_modules).
+
+In Download we expect two parameters.
+- version: the resolved version string obtained from GetVersion method
+- npmPackage: the manifest struct previously defined
+
+We find the version in the Version map,  if not found we return an error.
+
+after we get the tarball URL from the Dist property, get name of package from URL, 
+for example if we have this URL https://registry.npmjs.org/express/-/express-4.4.1.tgz ,  we save in variable filename only express-4.4.1.tgz .
+then we create the full file path using the /tmp and the filename, afer we call utilily function DownloadFile to do the work
+and finally return path of tar (we need that later) and err result.
+
+
+
+we can test this in command install
+
+cmd/install.go
+
+```go	
+func runInstall(cmd *cobra.Command, args []string) error {
+	fmt.Println("Starting installation process...")
+
+	cfg, err := config.New()
+	if err != nil {
+		panic(err)
+	}
+
+	manifest, err := manifest.NewManifest(cfg.ManifestDir, cfg.NpmRegistryURL)
+	if err != nil {
+		panic(err)
+	}
+
+	npmPackage, err := manifest.Download("express")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(npmPackage.Name)
+
+	v := version.NewVersionInfo()
+	resolvedVersion := v.GetVersion("^4.0.0", npmPackage)
+	fmt.Println("Resolved version:", resolvedVersion)
+
+	tarball := tarball.NewTarball()
+	if err := tarball.Download(resolvedVersion, npmPackage); err != nil {
+		panic(err)
+	}
+
+	return nil
+}
+```
+
+if everything works fine we should see the tarball file in /tmp directory
+
+Run 
+
+```bash
+ls /tmp | grep 4.21.2
+```
+
+express-4.21.2.tgz
+
+
+Like always add test for tarball.go 
+
+tarball/tarball_test.go
+
+```go
+package tarball
+
+import (
+	"go-npm/manifest"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestDownloadTarball_Download(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) (string, manifest.NPMPackage)
+		expectError bool
+		validate    func(t *testing.T, tb *Tarball, version string, npmPackage manifest.NPMPackage, err error)
+	}{
+		{
+			name: "Download express tarball successfully",
+			setupFunc: func(t *testing.T) (string, manifest.NPMPackage) {
+				version := "4.18.2"
+				url := "https://registry.npmjs.org/express/-/express-4.18.2.tgz"
+				pkg := manifest.NPMPackage{
+					Name: "express",
+					Versions: map[string]manifest.Version{
+						version: {
+							Dist: manifest.Dist{
+								Tarball: url,
+							},
+						},
+					},
+				}
+				return version, pkg
+			},
+			expectError: false,
+			validate: func(t *testing.T, tb *Tarball, version string, npmPackage manifest.NPMPackage, err error) {
+				assert.NoError(t, err, "Download should succeed")
+
+				expectedFile := filepath.Join(tb.TarballPath, "express-4.18.2.tgz")
+				info, statErr := os.Stat(expectedFile)
+				assert.NoError(t, statErr, "Tarball file should exist")
+				assert.Greater(t, info.Size(), int64(0), "File should not be empty")
+			},
+		},
+		{
+			name: "Error with invalid tarball URL",
+			setupFunc: func(t *testing.T) (string, manifest.NPMPackage) {
+				version := "1.0.0"
+				url := "https://registry.npmjs.org/invalid-package-12345678/-/invalid-package-12345678-1.0.0.tgz"
+				pkg := manifest.NPMPackage{
+					Name: "invalid-package-12345678",
+					Versions: map[string]manifest.Version{
+						version: {
+							Dist: manifest.Dist{
+								Tarball: url,
+							},
+						},
+					},
+				}
+				return version, pkg
+			},
+			expectError: true,
+			validate: func(t *testing.T, tb *Tarball, version string, npmPackage manifest.NPMPackage, err error) {
+				assert.Error(t, err, "Should return error for non-existent package")
+				assert.Contains(t, err.Error(), "HTTP error", "Error should indicate HTTP status problem")
+
+				expectedFile := filepath.Join(tb.TarballPath, "invalid-package-12345678-1.0.0.tgz")
+				info, statErr := os.Stat(expectedFile)
+				if statErr == nil {
+					assert.Equal(t, int64(0), info.Size(), "File should be empty or not exist")
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			version, pkg := tc.setupFunc(t)
+			tarball := NewTarball()
+			_, err := tarball.Download(version, pkg)
+
+			if tc.expectError {
+				assert.Error(t, err, "Expected an error")
+			} else {
+				assert.NoError(t, err, "Expected no error")
+			}
+
+			tc.validate(t, tarball, version, pkg, err)
+		})
+	}
+}
+```
+
+We create two test cases,  one for successful download of express tarball,  and another for invalid package that should return error. 
+in Validate function we check the following.
+- if we expect error or not
+- use os.Stat to check if the file exists in the temp directory
+
+
+
+# Extract Tarball
+
+Now that we have the tarball file in /tmp, is time to extract the content and copy in node_modules directory.
+for that we create a new package
+
+```bash
+mkdir extractor
+cd extractor
+touch extractor.go
+```
+
+```go
+package extractor
+
+import (
+	"archive/tar"
+	"bufio"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type TGZExtractor struct {
+	bufferSize int
+}
+
+func NewTGZExtractor() *TGZExtractor {
+	return &TGZExtractor{
+		bufferSize: 32 * 1024,
+	}
+}
+
+func (e *TGZExtractor) Extract(srcPath, destPath string) error {
+	file, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", srcPath, err)
+	}
+	defer file.Close()
+
+	bufReader := bufio.NewReaderSize(file, e.bufferSize)
+
+	gzr, err := gzip.NewReader(bufReader)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+
+	copyBuffer := make([]byte, e.bufferSize)
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		relativePath := e.stripPackagePrefix(header.Name)
+		if relativePath == "" {
+			continue
+		}
+		target := filepath.Join(destPath, relativePath)
+
+		if !e.isValidPath(target, destPath) {
+			fmt.Printf("Skipping unsafe path: %s\n", header.Name)
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeReg:
+			if err := e.extractFile(tr, target, header, copyBuffer); err != nil {
+				return err
+			}
+		default:
+			fmt.Printf("Skipping unsupported file type: %c for %s\n", header.Typeflag, header.Name)
+		}
+	}
+
+	return nil
+}
+
+func (e *TGZExtractor) isValidPath(target string, destPath string) bool {
+	cleanDest := filepath.Clean(destPath) + string(os.PathSeparator)
+	cleanTarget := filepath.Clean(target)
+	return strings.HasPrefix(cleanTarget, cleanDest)
+}
+
+func (e *TGZExtractor) extractFile(tr *tar.Reader, target string, header *tar.Header, copyBuffer []byte) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory for %s: %w", target, err)
+	}
+
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", target, err)
+	}
+	defer f.Close()
+
+	_, err = io.CopyBuffer(f, tr, copyBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", target, err)
+	}
+
+	return nil
+}
+
+func (e *TGZExtractor) stripPackagePrefix(path string) string {
+	if idx := strings.Index(path, "/"); idx != -1 {
+		return path[idx+1:]
+	}
+	return ""
+}
+
+```
+
+We create a NewTGZExtractor function that initialize the bufferSize with 32KB for efficient reading and writing.
+
+In Extract method we expect two parameters
+- srcPath: the path of the tarball file to extract
+- destPath: the destination directory where the contents will be extracted (in our case node_modules)
+- We tried to open the sourceFile,  if error happens returns that
+- In order to read file we created a buffered reader with the specified buffer size.
+- Create a gzip reader to handle decompression of the .tgz file.
+- Create a tar reader to read the contents of the tar archive.
+- Create a temp buffer for copying data.
+
+Then we loop through each file in the tar archive using tr.Next() and do this.
+- Read header information for the current file.
+- Clean path by removing the leading package directory (e.g., tmp/).
+- Extract files and folders in destPath.
+
+ExtractFile method handles the actual file extraction process.
+
+- Creat parent filder,  we use os.MkdirAll to create any necessary parent directories for the target file.
+- Create and write file using io.CopyBuffer to copy data from the tar reader to the target.
