@@ -2243,3 +2243,426 @@ ExtractFile method handles the actual file extraction process.
 
 - Creat parent filder,  we use os.MkdirAll to create any necessary parent directories for the target file.
 - Create and write file using io.CopyBuffer to copy data from the tar reader to the target.
+
+
+Update install comand to test this 
+
+cmd/install.go
+```go
+func runInstall(cmd *cobra.Command, args []string) error {
+	fmt.Println("Starting installation process...")
+
+	cfg, err := config.New()
+	if err != nil {
+		panic(err)
+	}
+
+	manifest, err := manifest.NewManifest(cfg.ManifestDir, cfg.NpmRegistryURL)
+	if err != nil {
+		panic(err)
+	}
+
+	npmPackage, err := manifest.Download("express")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(npmPackage.Name)
+
+	v := version.NewVersionInfo()
+	resolvedVersion := v.GetVersion("^4.0.0", npmPackage)
+	fmt.Println("Resolved version:", resolvedVersion)
+
+	tarball := tarball.NewTarball()
+	downloadedPath, err := tarball.Download(resolvedVersion, npmPackage)
+	if err != nil {
+		panic(err)
+	}
+
+	extractor := extractor.NewTGZExtractor()
+	destPath := filepath.Join("node_modules", npmPackage.Name)
+	if err := extractor.Extract(downloadedPath, destPath); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Package installed to %s\n", destPath)
+
+	return nil
+}
+```
+
+Run 
+
+```bash
+go run . i
+```
+
+You should see a node_modules folder created with express package inside.
+
+We can check the version of express wit this command
+
+```js
+node index.js
+```
+
+Error 
+
+node:internal/modules/cjs/loader:1386
+  throw err;
+  ^
+
+Error: Cannot find module 'array-flatten'
+Require stack:
+- /home/ernesto/code/go-npm/tutorial/code/node_modules/express/lib/router/route.js
+- /home/ernesto/code/go-npm/tutorial/code/node_modules/express/lib/router/index.js
+- /home/ernesto/code/go-npm/tutorial/code/node_modules/express/lib/application.js
+- /home/ernesto/code/go-npm/tutorial/code/node_modules/express/lib/express.js
+- /home/ernesto/code/go-npm/tutorial/code/node_modules/express/index.js
+- /home/ernesto/code/go-npm/tutorial/code/index.js
+
+This is expected because we only installed the parent dependency express,  but not its child dependencies ,  we can fix this later.
+
+
+
+```bash
+cat node_modules/express/package.json | grep version
+```
+Output: 
+"version": "4.21.2",
+
+This is great achievement,  but if we execute 
+
+
+
+Like always add test for extractor.go
+
+extractor/extractor_test.go
+
+```go
+package extractor
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+// setupTestExtractorDirs creates temporary directories for testing
+func setupTestExtractorDirs(t *testing.T) (string, string) {
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "src")
+	destDir := filepath.Join(tmpDir, "dest")
+	os.MkdirAll(srcDir, 0755)
+	os.MkdirAll(destDir, 0755)
+	return srcDir, destDir
+}
+
+// createTestTarball creates a test .tgz file with specified entries
+func createTestTarball(t *testing.T, path string, entries map[string]string) {
+	file, err := os.Create(path)
+	assert.NoError(t, err)
+	defer file.Close()
+
+	gzw := gzip.NewWriter(file)
+	defer gzw.Close()
+
+	tw := tar.NewWriter(gzw)
+	defer tw.Close()
+
+	for name, content := range entries {
+		header := &tar.Header{
+			Name:     name,
+			Mode:     0644,
+			Size:     int64(len(content)),
+			Typeflag: tar.TypeReg,
+		}
+		err := tw.WriteHeader(header)
+		assert.NoError(t, err)
+
+		_, err = tw.Write([]byte(content))
+		assert.NoError(t, err)
+	}
+}
+
+func TestTGZExtractorStripPackagePrefix(t *testing.T) {
+	testCases := []struct {
+		name        string
+		inputPath   string
+		expectedVal string
+	}{
+		{
+			name:        "Strip package prefix successfully",
+			inputPath:   "package/index.js",
+			expectedVal: "index.js",
+		},
+		{
+			name:        "Strip package prefix from nested path",
+			inputPath:   "package/lib/utils.js",
+			expectedVal: "lib/utils.js",
+		},
+		{
+			name:        "No package prefix - return empty string",
+			inputPath:   "index.js",
+			expectedVal: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			extractor := NewTGZExtractor()
+			result := extractor.stripPackagePrefix(tc.inputPath)
+			assert.Equal(t, tc.expectedVal, result)
+		})
+	}
+}
+
+func TestTGZExtractorExtract(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) (string, string)
+		expectError bool
+		validate    func(t *testing.T, destDir string, err error)
+	}{
+		{
+			name: "Extract tarball with package prefix successfully",
+			setupFunc: func(t *testing.T) (string, string) {
+				srcDir, destDir := setupTestExtractorDirs(t)
+				tarballPath := filepath.Join(srcDir, "test.tgz")
+
+				entries := map[string]string{
+					"package/index.js":     "console.log('hello');",
+					"package/package.json": "{\"name\":\"test\"}",
+					"package/lib/utils.js": "module.exports = {};",
+				}
+				createTestTarball(t, tarballPath, entries)
+
+				return tarballPath, destDir
+			},
+			expectError: false,
+			validate: func(t *testing.T, destDir string, err error) {
+				assert.NoError(t, err, "Extract should succeed")
+
+				indexPath := filepath.Join(destDir, "index.js")
+				assert.FileExists(t, indexPath)
+
+				packageJsonPath := filepath.Join(destDir, "package.json")
+				assert.FileExists(t, packageJsonPath)
+
+				utilsPath := filepath.Join(destDir, "lib", "utils.js")
+				assert.FileExists(t, utilsPath)
+
+				content, readErr := os.ReadFile(indexPath)
+				assert.NoError(t, readErr)
+				assert.Equal(t, "console.log('hello');", string(content))
+			},
+		},
+		{
+			name: "Skip files without directory prefix",
+			setupFunc: func(t *testing.T) (string, string) {
+				srcDir, destDir := setupTestExtractorDirs(t)
+				tarballPath := filepath.Join(srcDir, "test.tgz")
+
+				entries := map[string]string{
+					"index.js":  "console.log('no prefix');",
+					"README.md": "# Test Package",
+				}
+				createTestTarball(t, tarballPath, entries)
+
+				return tarballPath, destDir
+			},
+			expectError: false,
+			validate: func(t *testing.T, destDir string, err error) {
+				assert.NoError(t, err)
+
+				indexPath := filepath.Join(destDir, "index.js")
+				assert.NoFileExists(t, indexPath, "Files without directory prefix should be skipped")
+
+				readmePath := filepath.Join(destDir, "README.md")
+				assert.NoFileExists(t, readmePath, "Files without directory prefix should be skipped")
+			},
+		},
+		{
+			name: "Error with non-existent tarball file",
+			setupFunc: func(t *testing.T) (string, string) {
+				srcDir, destDir := setupTestExtractorDirs(t)
+				tarballPath := filepath.Join(srcDir, "nonexistent.tgz")
+				return tarballPath, destDir
+			},
+			expectError: true,
+			validate: func(t *testing.T, destDir string, err error) {
+				assert.Error(t, err, "Should return error for non-existent file")
+				assert.Contains(t, err.Error(), "failed to open file")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tarballPath, destDir := tc.setupFunc(t)
+			extractor := NewTGZExtractor()
+			err := extractor.Extract(tarballPath, destDir)
+
+			if tc.expectError {
+				assert.Error(t, err, "Expected an error")
+			} else {
+				assert.NoError(t, err, "Expected no error")
+			}
+
+			tc.validate(t, destDir, err)
+		})
+	}
+}
+```
+
+We add two helper function in this test.
+
+- setupTestExtractorDirs to create temporary source and destination directories for testing,  in /temp directory of our machine.
+- createTestTarball create a tgz file with specified files for testing various cases.
+
+
+We add test for stripPackagePrefix method to ensure it correctly removes the leading package directory from file paths.
+
+TestTGZExtractorExtract configure various scenarios for extracting tarball 
+
+We need to setup testing context in order to made sure that all is working as expected, 
+for that in setupFunc we call functions setupTestExtractorDirs and createTestTarball to prepare the source tarball and destination directory.
+
+- Expected error or not
+- Check if file exists in destination directory 
+- Check content of files extracted.
+
+
+# Manager component 
+
+At moment we have a solid list of components that have a specific task to perform.  
+
+- Manifest:  download and parse package manifest from npm registry
+- Version:  resolve version constraints to specific version
+- Tarball:  download the tarball file for specific version
+- Extractor:  extract the tarball contents into node_modules
+
+We are going to create a new package call manager that abstract the initialization and interaction with all these components.
+
+```bash
+mkdir manager
+cd manager
+touch manager.go
+```
+
+manager/manager.go
+
+```go
+package manager
+
+import (
+	"fmt"
+	"go-npm/config"
+	"go-npm/extractor"
+	"go-npm/manifest"
+	"go-npm/packagejson"
+	"go-npm/tarball"
+	"go-npm/version"
+	"path/filepath"
+)
+
+type Manager struct {
+	Config      *config.Config
+	Manifest    *manifest.Manifest
+	Version     *version.VersionInfo
+	Tarball     *tarball.Tarball
+	Extractor   *extractor.TGZExtractor
+	PackageJSON *packagejson.PackageJSON
+}
+
+type job struct {
+	Name    string
+	Version string
+}
+
+func New() (*Manager, error) {
+	cfg, err := config.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	m, err := manifest.NewManifest(cfg.ManifestDir, cfg.NpmRegistryURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init manifest: %w", err)
+	}
+
+	parser := packagejson.NewPackageJSONParser(cfg)
+	pkgJSON, err := parser.Parse("package.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse package.json: %w", err)
+	}
+
+	return &Manager{
+		Config:      cfg,
+		Manifest:    m,
+		Version:     version.NewVersionInfo(),
+		Tarball:     tarball.NewTarball(),
+		Extractor:   extractor.NewTGZExtractor(),
+		PackageJSON: pkgJSON,
+	}, nil
+}
+
+func (m *Manager) Install() error {
+	var queue []job
+	for name, version := range m.PackageJSON.Dependencies {
+		queue = append(queue, job{Name: name, Version: version})
+	}
+
+	installed := make(map[string]bool)
+	parser := packagejson.NewPackageJSONParser(m.Config)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if installed[current.Name] {
+			continue
+		}
+
+		npmPackage, err := m.Manifest.Download(current.Name)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("Installing:", npmPackage.Name)
+
+		resolvedVersion := m.Version.GetVersion(current.Version, npmPackage)
+		fmt.Println("Resolved version:", resolvedVersion)
+
+		downloadedPath, err := m.Tarball.Download(resolvedVersion, npmPackage)
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join("node_modules", npmPackage.Name)
+		if err := m.Extractor.Extract(downloadedPath, destPath); err != nil {
+			return err
+		}
+
+		installedPkgJSONPath := filepath.Join(destPath, "package.json")
+		installedPkgJSON, err := parser.Parse(installedPkgJSONPath)
+		if err == nil && installedPkgJSON.Dependencies != nil {
+			for name, version := range installedPkgJSON.Dependencies {
+				if !installed[name] {
+					queue = append(queue, job{Name: name, Version: version})
+				}
+			}
+		}
+
+		installed[current.Name] = true
+	}
+
+	return nil
+}
+```
+
+New method intializes all packages dependencies , if error return the error, otherwise return Manager instance.
+

@@ -2,11 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"go-npm/config"
-	"go-npm/extractor"
-	"go-npm/manifest"
-	"go-npm/tarball"
-	"go-npm/version"
+	"go-npm/manager"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -27,40 +23,16 @@ func init() {
 func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("Starting installation process...")
 
-	cfg, err := config.New()
+	mgr, err := manager.New()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	manifest, err := manifest.NewManifest(cfg.ManifestDir, cfg.NpmRegistryURL)
-	if err != nil {
-		panic(err)
+	if err := mgr.Install(); err != nil {
+		return err
 	}
 
-	npmPackage, err := manifest.Download("express")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(npmPackage.Name)
-
-	v := version.NewVersionInfo()
-	resolvedVersion := v.GetVersion("^4.0.0", npmPackage)
-	fmt.Println("Resolved version:", resolvedVersion)
-
-	tarball := tarball.NewTarball()
-	downloadedPath, err := tarball.Download(resolvedVersion, npmPackage)
-	if err != nil {
-		panic(err)
-	}
-
-	extractor := extractor.NewTGZExtractor()
-	destPath := filepath.Join("node_modules", npmPackage.Name)
-	if err := extractor.Extract(downloadedPath, destPath); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Package installed to %s\n", destPath)
+	fmt.Printf("Package installed to %s\n", filepath.Join("node_modules", "express"))
 
 	return nil
 }
