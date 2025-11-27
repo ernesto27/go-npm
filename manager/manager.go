@@ -828,7 +828,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 
 				var packageResolved string
-				var shouldProcessDeps bool
+				var shouldDownload bool
 
 				mapMutex.Lock()
 				if existingPkg, ok := packagesVersion[item.Dep.Name]; ok {
@@ -844,10 +844,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						}
 
 						if _, processed := processingPkgs[packageKey]; processed {
-							shouldProcessDeps = false
+							shouldDownload = false
 						} else {
 							processingPkgs[packageKey] = true
-							shouldProcessDeps = true
+							shouldDownload = true
 						}
 					} else {
 						mapMutex.Unlock()
@@ -861,10 +861,10 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					if _, processed := processingPkgs[packageKey]; processed {
-						shouldProcessDeps = false
+						shouldDownload = false
 					} else {
 						processingPkgs[packageKey] = true
-						shouldProcessDeps = true
+						shouldDownload = true
 					}
 				}
 				mapMutex.Unlock()
@@ -882,7 +882,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					resolvedURL = tarballURL
 				}
 
-				if shouldProcessDeps && !utils.FolderExists(configPackageVersion) {
+				if shouldDownload && !utils.FolderExists(configPackageVersion) {
 					if tarballURL == "" || version == "" {
 						fmt.Printf("Skipping download for %s - invalid URL or empty version\n", item.Dep.Name)
 						return
@@ -977,107 +977,105 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 				mapMutex.Unlock()
 
-				if shouldProcessDeps {
-					packageJsonPath := filepath.Join(pm.packagesPath, actualName+"@"+version, "package.json")
+				packageJsonPath := filepath.Join(pm.packagesPath, actualName+"@"+version, "package.json")
 
-					data, err := pm.packageJsonParse.Parse(packageJsonPath)
-					if err != nil {
-						select {
-						case errChan <- err:
-							close(done)
-						default:
-						}
-						return
+				data, err := pm.packageJsonParse.Parse(packageJsonPath)
+				if err != nil {
+					select {
+					case errChan <- err:
+						close(done)
+					default:
 					}
-
-					mapMutex.Lock()
-					for name, depVersion := range data.GetDependencies() {
-						pkgItem := packageLock.Packages[packageResolved]
-						if pkgItem.Dependencies == nil {
-							pkgItem.Dependencies = make(map[string]string)
-						}
-						pkgItem.Dependencies[name] = depVersion
-						packageLock.Packages[packageResolved] = pkgItem
-
-						// Check if sub-dependency is also an alias
-						subDep := packagejson.Dependency{Name: name, Version: depVersion}
-						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-							subDep.ActualName = actualPkg
-							subDep.Version = actualVersion
-						} else {
-							subDep.ActualName = name
-						}
-
-						workChan <- QueueItem{
-							Dep:        subDep,
-							ParentName: packageResolved,
-							IsDev:      item.IsDev,
-						}
-					}
-
-					// Process optional dependencies from sub-packages
-					for name, depVersion := range data.GetOptionalDependencies() {
-						pkgItem := packageLock.Packages[packageResolved]
-						if pkgItem.OptionalDependencies == nil {
-							pkgItem.OptionalDependencies = make(map[string]string)
-						}
-						pkgItem.OptionalDependencies[name] = depVersion
-						packageLock.Packages[packageResolved] = pkgItem
-
-						// Check if sub-dependency is also an alias
-						subDep := packagejson.Dependency{Name: name, Version: depVersion}
-						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-							subDep.ActualName = actualPkg
-							subDep.Version = actualVersion
-						} else {
-							subDep.ActualName = name
-						}
-
-						workChan <- QueueItem{
-							Dep:        subDep,
-							ParentName: packageResolved,
-							IsDev:      false,
-							IsOptional: true,
-						}
-					}
-
-					// Process peer dependencies from sub-packages (auto-install per npm 7+ behavior)
-					for name, depVersion := range data.GetPeerDependencies() {
-						pkgItem := packageLock.Packages[packageResolved]
-						if pkgItem.PeerDependencies == nil {
-							pkgItem.PeerDependencies = make(map[string]string)
-						}
-						pkgItem.PeerDependencies[name] = depVersion
-						packageLock.Packages[packageResolved] = pkgItem
-
-						// Check if this peer dependency is optional
-						isPeerOptional := false
-						if data.PeerDependenciesMeta != nil {
-							if meta, exists := data.PeerDependenciesMeta[name]; exists {
-								isPeerOptional = meta.Optional
-							}
-						}
-
-						// Check if sub-dependency is also an alias
-						subDep := packagejson.Dependency{Name: name, Version: depVersion}
-						if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-							subDep.ActualName = actualPkg
-							subDep.Version = actualVersion
-						} else {
-							subDep.ActualName = name
-						}
-
-						workChan <- QueueItem{
-							Dep:            subDep,
-							ParentName:     packageResolved,
-							IsDev:          false,
-							IsOptional:     false,
-							IsPeer:         true,
-							IsPeerOptional: isPeerOptional,
-						}
-					}
-					mapMutex.Unlock()
+					return
 				}
+
+				mapMutex.Lock()
+				for name, depVersion := range data.GetDependencies() {
+					pkgItem := packageLock.Packages[packageResolved]
+					if pkgItem.Dependencies == nil {
+						pkgItem.Dependencies = make(map[string]string)
+					}
+					pkgItem.Dependencies[name] = depVersion
+					packageLock.Packages[packageResolved] = pkgItem
+
+					// Check if sub-dependency is also an alias
+					subDep := packagejson.Dependency{Name: name, Version: depVersion}
+					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+						subDep.ActualName = actualPkg
+						subDep.Version = actualVersion
+					} else {
+						subDep.ActualName = name
+					}
+
+					workChan <- QueueItem{
+						Dep:        subDep,
+						ParentName: packageResolved,
+						IsDev:      item.IsDev,
+					}
+				}
+
+				// Process optional dependencies from sub-packages
+				for name, depVersion := range data.GetOptionalDependencies() {
+					pkgItem := packageLock.Packages[packageResolved]
+					if pkgItem.OptionalDependencies == nil {
+						pkgItem.OptionalDependencies = make(map[string]string)
+					}
+					pkgItem.OptionalDependencies[name] = depVersion
+					packageLock.Packages[packageResolved] = pkgItem
+
+					// Check if sub-dependency is also an alias
+					subDep := packagejson.Dependency{Name: name, Version: depVersion}
+					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+						subDep.ActualName = actualPkg
+						subDep.Version = actualVersion
+					} else {
+						subDep.ActualName = name
+					}
+
+					workChan <- QueueItem{
+						Dep:        subDep,
+						ParentName: packageResolved,
+						IsDev:      false,
+						IsOptional: true,
+					}
+				}
+
+				// Process peer dependencies from sub-packages (auto-install per npm 7+ behavior)
+				for name, depVersion := range data.GetPeerDependencies() {
+					pkgItem := packageLock.Packages[packageResolved]
+					if pkgItem.PeerDependencies == nil {
+						pkgItem.PeerDependencies = make(map[string]string)
+					}
+					pkgItem.PeerDependencies[name] = depVersion
+					packageLock.Packages[packageResolved] = pkgItem
+
+					// Check if this peer dependency is optional
+					isPeerOptional := false
+					if data.PeerDependenciesMeta != nil {
+						if meta, exists := data.PeerDependenciesMeta[name]; exists {
+							isPeerOptional = meta.Optional
+						}
+					}
+
+					// Check if sub-dependency is also an alias
+					subDep := packagejson.Dependency{Name: name, Version: depVersion}
+					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
+						subDep.ActualName = actualPkg
+						subDep.Version = actualVersion
+					} else {
+						subDep.ActualName = name
+					}
+
+					workChan <- QueueItem{
+						Dep:            subDep,
+						ParentName:     packageResolved,
+						IsDev:          false,
+						IsOptional:     false,
+						IsPeer:         true,
+						IsPeerOptional: isPeerOptional,
+					}
+				}
+					mapMutex.Unlock()
 			}(item)
 		default:
 			workerMutex.Lock()
