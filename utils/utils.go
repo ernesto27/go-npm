@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
@@ -38,7 +39,9 @@ func DownloadFile(url, filename string, etag string) (string, int, error) {
 		return "", resp.StatusCode, fmt.Errorf("failed to create directory structure: %w", err)
 	}
 
-	file, err := os.Create(filename)
+	// Download to temporary file first
+	tempFile := filename + ".tmp"
+	file, err := os.Create(tempFile)
 	if err != nil {
 		return "", resp.StatusCode, fmt.Errorf("failed to create file: %w", err)
 	}
@@ -47,8 +50,14 @@ func DownloadFile(url, filename string, etag string) (string, int, error) {
 	file.Close()
 
 	if err != nil {
-		os.Remove(filename)
+		os.Remove(tempFile) // Clean up temp file on failure
 		return "", resp.StatusCode, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	// Atomic rename: only succeeds if download completed
+	if err := os.Rename(tempFile, filename); err != nil {
+		os.Remove(tempFile)
+		return "", resp.StatusCode, fmt.Errorf("failed to finalize download: %w", err)
 	}
 
 	return resp.Header.Get("ETag"), resp.StatusCode, nil
@@ -74,4 +83,30 @@ func FolderExists(dirPath string) bool {
 		return false
 	}
 	return err == nil && info.IsDir()
+}
+
+// ValidateTarball checks if a tarball file is valid and not corrupted
+// Returns true if file exists and is a valid gzip file with size > 0
+func ValidateTarball(filePath string) bool {
+	// Check file exists and has non-zero size
+	fileInfo, err := os.Stat(filePath)
+	if err != nil || fileInfo.Size() == 0 {
+		return false
+	}
+
+	// Attempt to open as gzip to verify it's not corrupted
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Try to create gzip reader (this is where corruption is detected)
+	gzr, err := gzip.NewReader(file)
+	if err != nil {
+		return false
+	}
+	defer gzr.Close()
+
+	return true
 }

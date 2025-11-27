@@ -416,8 +416,15 @@ func (pm *PackageManager) InstallFromCache() error {
 				tarballLock.Lock()
 				tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
 
-				// Check if file was already downloaded by another goroutine
-				if _, statErr := os.Stat(tarballPath); os.IsNotExist(statErr) {
+				// Validate tarball (checks existence and integrity)
+				shouldDownload := true
+				if utils.ValidateTarball(tarballPath) {
+					shouldDownload = false
+				} else {
+					os.Remove(tarballPath)
+				}
+
+				if shouldDownload {
 					err := pm.tarball.Download(downloadURL)
 					if err != nil {
 						tarballLock.Unlock()
@@ -895,8 +902,15 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					tarballLock.Lock()
 					tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
 
-					// Check if file was already downloaded by another goroutine
-					if _, statErr := os.Stat(tarballPath); os.IsNotExist(statErr) {
+					// Validate tarball (checks existence and integrity)
+					shouldDownload := true
+					if utils.ValidateTarball(tarballPath) {
+						shouldDownload = false
+					} else {
+						os.Remove(tarballPath)
+					}
+
+					if shouldDownload {
 						err = pm.tarball.Download(tarballURL)
 						if err != nil {
 							tarballLock.Unlock()
