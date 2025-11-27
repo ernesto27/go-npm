@@ -57,11 +57,38 @@ func TestPackageJSONParser_Parse(t *testing.T) {
 				assert.Equal(t, map[string]string{
 					"express": "^4.18.0",
 					"lodash":  "^4.17.21",
-				}, result.Dependencies)
+				}, result.GetDependencies())
 				assert.Equal(t, map[string]string{
 					"start": "node index.js",
 					"test":  "jest",
 				}, result.Scripts)
+			},
+		},
+		{
+			name: "Legacy format with array dependencies",
+			setupFile: func(t *testing.T) string {
+				tmpDir := t.TempDir()
+				tmpFile := filepath.Join(tmpDir, "package.json")
+
+				legacyJSON := []byte(`{
+					"name": "JSV",
+					"version": "4.0.2",
+					"description": "A JavaScript implementation of a extendable, fully compliant JSON Schema validator.",
+					"dependencies": [],
+					"main": "lib/jsv.js"
+				}`)
+
+				os.WriteFile(tmpFile, legacyJSON, 0644)
+				return tmpDir
+			},
+			expectError: false,
+			validate: func(t *testing.T, result *PackageJSON) {
+				assert.Equal(t, "JSV", result.Name)
+				assert.Equal(t, "4.0.2", result.Version)
+				// Array dependencies should be converted to empty map
+				deps := result.GetDependencies()
+				assert.NotNil(t, deps)
+				assert.Equal(t, 0, len(deps))
 			},
 		},
 		{

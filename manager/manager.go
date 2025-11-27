@@ -492,8 +492,9 @@ func (pm *PackageManager) Add(pkgName string, version string, isInstall bool) er
 	}
 
 	if !isInstall {
-		if _, exists := packageJson.Dependencies[pkgName]; exists {
-			if version != "" && packageJson.Dependencies[pkgName] == version {
+		deps := packageJson.GetDependencies()
+		if _, exists := deps[pkgName]; exists {
+			if version != "" && deps[pkgName] == version {
 				fmt.Println("Package", pkgName, "already exists in dependencies with the same version", version)
 				return nil
 			}
@@ -558,7 +559,7 @@ func (pm *PackageManager) Remove(pkg string, removeFromPackageJson bool) error {
 func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isProduction bool) error {
 	queue := make([]QueueItem, 0)
 
-	for name, version := range packageJson.Dependencies {
+	for name, version := range packageJson.GetDependencies() {
 		dep := packagejson.Dependency{Name: name, Version: version}
 
 		// Check for GitHub dependency format: "github:user/repo#ref"
@@ -583,7 +584,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	}
 
 	if !isProduction {
-		for name, version := range packageJson.DevDependencies {
+		for name, version := range packageJson.GetDevDependencies() {
 			dep := packagejson.Dependency{Name: name, Version: version}
 
 			// Check for GitHub dependency format: "github:user/repo#ref"
@@ -606,7 +607,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 		}
 	}
 
-	for name, version := range packageJson.OptionalDependencies {
+	for name, version := range packageJson.GetOptionalDependencies() {
 		dep := packagejson.Dependency{Name: name, Version: version}
 
 		// Check for GitHub dependency format: "github:user/repo#ref"
@@ -976,7 +977,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					mapMutex.Lock()
-					for name, depVersion := range data.Dependencies {
+					for name, depVersion := range data.GetDependencies() {
 						pkgItem := packageLock.Packages[packageResolved]
 						if pkgItem.Dependencies == nil {
 							pkgItem.Dependencies = make(map[string]string)
@@ -1001,7 +1002,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					// Process optional dependencies from sub-packages
-					for name, depVersion := range data.OptionalDependencies {
+					for name, depVersion := range data.GetOptionalDependencies() {
 						pkgItem := packageLock.Packages[packageResolved]
 						if pkgItem.OptionalDependencies == nil {
 							pkgItem.OptionalDependencies = make(map[string]string)
@@ -1027,7 +1028,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					// Process peer dependencies from sub-packages (auto-install per npm 7+ behavior)
-					for name, depVersion := range data.PeerDependencies {
+					for name, depVersion := range data.GetPeerDependencies() {
 						pkgItem := packageLock.Packages[packageResolved]
 						if pkgItem.PeerDependencies == nil {
 							pkgItem.PeerDependencies = make(map[string]string)

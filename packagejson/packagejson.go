@@ -30,10 +30,10 @@ type PackageJSON struct {
 	Homepage        any               `json:"homepage"`
 	Funding         any               `json:"funding"`
 	Keywords        any               `json:"keywords"`
-	Dependencies         map[string]string `json:"dependencies"`
-	DevDependencies      map[string]string `json:"devDependencies"`
-	OptionalDependencies map[string]string `json:"optionalDependencies"`
-	PeerDependencies     map[string]string `json:"peerDependencies"`
+	Dependencies         any `json:"dependencies"`
+	DevDependencies      any `json:"devDependencies"`
+	OptionalDependencies any `json:"optionalDependencies"`
+	PeerDependencies     any `json:"peerDependencies"`
 	PeerDependenciesMeta map[string]PeerMeta `json:"peerDependenciesMeta"`
 	Engines              any               `json:"engines"`
 	Files           any               `json:"files"`
@@ -53,6 +53,44 @@ type Funding struct {
 
 type PeerMeta struct {
 	Optional bool `json:"optional"`
+}
+
+func (p *PackageJSON) GetDependencies() map[string]string {
+	return extractDependencyMap(p.Dependencies)
+}
+
+func (p *PackageJSON) GetDevDependencies() map[string]string {
+	return extractDependencyMap(p.DevDependencies)
+}
+
+func (p *PackageJSON) GetOptionalDependencies() map[string]string {
+	return extractDependencyMap(p.OptionalDependencies)
+}
+
+func (p *PackageJSON) GetPeerDependencies() map[string]string {
+	return extractDependencyMap(p.PeerDependencies)
+}
+
+func extractDependencyMap(deps any) map[string]string {
+	if deps == nil {
+		return make(map[string]string)
+	}
+
+	if m, ok := deps.(map[string]interface{}); ok {
+		result := make(map[string]string)
+		for k, v := range m {
+			if str, ok := v.(string); ok {
+				result[k] = str
+			}
+		}
+		return result
+	}
+
+	if m, ok := deps.(map[string]string); ok {
+		return m
+	}
+
+	return make(map[string]string)
 }
 
 type PackageJSONParser struct {
@@ -259,10 +297,9 @@ func (p *PackageJSONParser) AddOrUpdateDependency(name string, version string) e
 		return fmt.Errorf("original content not cached, call Parse() first")
 	}
 
-	if p.PackageJSON.Dependencies == nil {
-		p.PackageJSON.Dependencies = make(map[string]string)
-	}
-	p.PackageJSON.Dependencies[name] = version
+	deps := p.PackageJSON.GetDependencies()
+	deps[name] = version
+	p.PackageJSON.Dependencies = deps
 
 	// Check if dependency already exists (using cached content)
 	jsonStr := string(p.OriginalContent)
@@ -298,7 +335,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 	toInstall = []Dependency{}
 	toRemove = []Dependency{}
 
-	for name, versionInJSON := range p.PackageJSON.Dependencies {
+	for name, versionInJSON := range p.PackageJSON.GetDependencies() {
 		versionInLock, exists := p.PackageLock.Dependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -308,7 +345,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 		}
 	}
 
-	for name, versionInJSON := range p.PackageJSON.DevDependencies {
+	for name, versionInJSON := range p.PackageJSON.GetDevDependencies() {
 		versionInLock, exists := p.PackageLock.DevDependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -318,7 +355,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 		}
 	}
 
-	for name, versionInJSON := range p.PackageJSON.OptionalDependencies {
+	for name, versionInJSON := range p.PackageJSON.GetOptionalDependencies() {
 		versionInLock, exists := p.PackageLock.OptionalDependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -329,9 +366,13 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 	}
 
 	for name, versionInLock := range p.PackageLock.Dependencies {
-		_, existsInDeps := p.PackageJSON.Dependencies[name]
-		_, existsInDevDeps := p.PackageJSON.DevDependencies[name]
-		_, existsInOptionalDeps := p.PackageJSON.OptionalDependencies[name]
+		deps := p.PackageJSON.GetDependencies()
+		devDeps := p.PackageJSON.GetDevDependencies()
+		optionalDeps := p.PackageJSON.GetOptionalDependencies()
+
+		_, existsInDeps := deps[name]
+		_, existsInDevDeps := devDeps[name]
+		_, existsInOptionalDeps := optionalDeps[name]
 
 		if !existsInDeps && !existsInDevDeps && !existsInOptionalDeps {
 			toRemove = append(toRemove, Dependency{
@@ -411,11 +452,12 @@ func (p *PackageJSONParser) RemoveDependencies(pkg string) error {
 		return fmt.Errorf("package.json not loaded, call Parse() first")
 	}
 
-	if p.PackageJSON.Dependencies == nil {
+	deps := p.PackageJSON.GetDependencies()
+	if len(deps) == 0 {
 		return fmt.Errorf("no dependencies found in package.json")
 	}
 
-	_, exists := p.PackageJSON.Dependencies[pkg]
+	_, exists := deps[pkg]
 	if !exists {
 		return fmt.Errorf("dependency '%s' not found in package.json", pkg)
 	}
@@ -431,7 +473,8 @@ func (p *PackageJSONParser) RemoveDependencies(pkg string) error {
 		return fmt.Errorf("failed to write file %s: %w", p.FilePath, err)
 	}
 
-	delete(p.PackageJSON.Dependencies, pkg)
+	delete(deps, pkg)
+	p.PackageJSON.Dependencies = deps
 	p.OriginalContent = []byte(jsonStr)
 
 	return nil
