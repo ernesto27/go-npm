@@ -1,73 +1,85 @@
 # TUTORIAL  
 
-Part 1 
 
-- Explain what this tutorial is about.
+
+
+
+# Intro
+
+This tutorial is about to create a npm package manager version like using golang.
+We start from scratch with a basic implementation in which we can run a install command like "go run . i" a run simple express server.
+This first version will be a starting point and functional for simple projects but does not have all the features that npm have (lock file, cache optimizations, global installations, etc), but beside that is a good starting point to understand how this works and to get a first glance of system programming in general.
+
+Before start is necessary to know at least in the base form the current status of different js/node packages.
+
+Here are the streamlined definitions for your tutorial:
+
+### npm (Node Package Manager)
+The default package manager bundled with Node.js. It manages dependencies in a flat node_modules structure and connects to the world's largest software registry. It is the industry standard for zero-configuration setups.
+
+### Yarn (Yet Another Resource Negotiator)
+Developed by Meta to improve upon npm's early performance. It utilizes parallel downloads for faster installation and is widely favored for its "Workspaces" feature, which simplifies managing multiple projects (monorepos).
+
+### pnpm (Performant npm)
+Designed for maximum disk efficiency. Instead of copying files for every project, it saves a single copy in a global store and links to them via symlinks. This drastically reduces disk usage and speeds up installation.
+
+### Bun
+An ultra-fast, all-in-one JavaScript runtime and package manager written in Zig. It aims to replace the entire modern toolchain by acting as your runtime, bundler, test runner, and package manager simultaneously.
+
+Although all of this projects use differentes languages and were created in differente context and times, all share the same final goal, that is to downlaod and install packages in a node_modules folder to be use in a front or backend project.
+
+
+
+We will create a base and solid desing structure to build upon it in future versions, also with testing to ensure that our code is working as expected. 
+
+
+## Table of contents
+- How npm install works
 - show how npm i works, architecture diagram of similar
 - Show example of the end result. 
 - dependencies required 
 - setup project, folders,  hello world  
 
 
-folders.
-- cmd cobra 
-- config 
-- extractor
-- manager 
-- manifest 
-- packagecopy 
-- packagejson 
-- tarball
-
-
-# Intro
-
-This tutorial is about to create npm package manager version using golang.
-We start from scratch with a basic implementation in which we can run this command and run a simple express server, 
-this first version does not have all the cache and performance optimizations of npm or other packages have, but it is a good starting point to understand how this works and to get a first glance of system programming.
-
-```bash
-go-npm i 
-```
-
-We will create a base and solid desing structure to build upon it in future versions, also with testing to ensure that our code is working as expected.
-
-
 # How npm install works 
 
-Before start coding we need to understand how the command npm install works,  what components are involved and how they interact with each other.
+Before start the project we need to understand how the command npm install works in detail,  what components are involved and how they interact with each other.
 This is a base diagram, we will start simple and not think at moment about cache and performance optimizations.
 
 ![npm install diagram](go-npm-i.png)
 
 
 1. **npm install**
-   You run the command to install packages.
+   call the command to install packages.
 
 2. **Parse package.json**
-   npm reads your project’s package.json to know which packages it needs.
+   npm reads your project’s package.json to know which packages need to install.
 
 3. **Download manifest**
-   npm contacts the registry and downloads the package information (metadata), like available versions.
+   npm go to the registry url of the packages and downloads the manifest file that contain all the versions and metadata of the package.
 
 4. **Download tarball**
-   npm downloads the actual package file (a .tgz archive).
+   npm downloads the actual package file (a .tgz archive),  obtain from manifiest file.
 
 5. **Extract tarball**
-   npm unpacks the .tgz file into normal files and folders.
+   npm unpacks the .tgz file into user machine.
 
 6. **Copy package to node_modules**
    npm moves the unpacked package into your project's node_modules folder so it can be used.
 
+This is a simple overview of the process,  like said before npm or other packages have optimizations and tricks to make things a lot faster.
+
 
 # Setup project
 
-We are going to use golang as language 1.25, so intall from here 
+We are going to use golang version 1.25 as language, so install  from here 
 
 https://go.dev/doc/install
 
-We also need nodejs installed, check this.
+We also need nodejs in order to test the express backend.
+
 https://nodejs.org/en/download
+
 
 Create a new folder and initialize go module 
 
@@ -77,14 +89,14 @@ cd go-npm
 go mod init go-npm 
 ```
 
-We will use some external dependencies to help us with CLI commands and testing, so let's install them now.
+We will use some external dependencies tthat help us with CLI commands and testing, so let's install them now.
 
 ```bash
-go get -u github.com/spf13/cobra@v1.10.1
-go get -u github.com/stretchr/testify@v1.11.1       
+go get install github.com/spf13/cobra@v1.10.1
+go get install github.com/stretchr/testify@v1.11.1       
 ```
 
-Create a main.go 
+main.go
 ```go
 package main
 
@@ -97,13 +109,18 @@ func main() {
 }
 ```
 
-Create a cmd folder and a root.go file inside it 
+in main function we intiliaize the cmd package (create next) that will handle the CLI commands using cobra library.
+
+
+
+Create a cmd folder and put a root.go file inside it 
 ```sh 
 mkdir cmd
 cd cmd
 touch root.go
 ```
-In root.go we will setup the base for our CLI commands using Cobra 
+
+cmd/root.go
 
 ```go
 package cmd
@@ -133,6 +150,12 @@ func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 ```
+Here we created the root command for our NPM clone and define some descriptions, 
+Execute is the function that is called in main.go and start the cobra init,  if happens show message and exist app.
+
+init is a special function in go that is called when the package is used, here we disable the default completion command that cobra add by default.
+
+
 
 For check command, create a file in cmd/install.go
 
