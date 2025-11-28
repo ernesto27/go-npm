@@ -6,9 +6,13 @@
 
 # Intro
 
+
 This tutorial is about to create a npm package manager version like using golang.
 We start from scratch with a basic implementation in which we can run a install command like "go run . i" a run simple express server.
 This first version will be a starting point and functional for simple projects but does not have all the features that npm have (lock file, cache optimizations, global installations, etc), but beside that is a good starting point to understand how this works and to get a first glance of system programming in general.
+
+
+![demo](code/demo.gif)
 
 Before start is necessary to know at least in the base form the current status of different js/node packages.
 
@@ -35,7 +39,7 @@ We will create a base and solid desing structure to build upon it in future vers
 
 ## Table of contents
 - How npm install works
-- show how npm i works, architecture diagram of similar
+- Config component
 - Show example of the end result. 
 - dependencies required 
 - setup project, folders,  hello world  
@@ -96,7 +100,7 @@ go get install github.com/spf13/cobra@v1.10.1
 go get install github.com/stretchr/testify@v1.11.1       
 ```
 
-main.go
+*main.go*
 ```go
 package main
 
@@ -120,7 +124,7 @@ cd cmd
 touch root.go
 ```
 
-cmd/root.go
+*cmd/root.go*
 
 ```go
 package cmd
@@ -156,9 +160,14 @@ Execute is the function that is called in main.go and start the cobra init,  if 
 init is a special function in go that is called when the package is used, here we disable the default completion command that cobra add by default.
 
 
+Create a install file 
 
-For check command, create a file in cmd/install.go
+```sh 
+cd cmd
+touch install.go
+```
 
+*cmd/install.go*
 ```go
 package cmd
 
@@ -169,7 +178,7 @@ import (
 )
 
 var installCmd = &cobra.Command{
-	Use:     "install [package[@version]]",
+	Use:     "install",
 	Aliases: []string{"i"},
 	Short:   "Install packages",
 	Long:    `Install packages from package.json.`,
@@ -185,9 +194,15 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 ```
-in this file we intialize the install command with alias i, and a simple runInstall function that for now just print a message.
+in this file we create a cobra command for install ,  this have and alias i to be used with "install" and with "i", 
 
-We can run this command with this 
+RunE is the definition of the function to execute when this command is called,  for now just print a message,
+
+in init function we add this command to the root command created previously in file root.go
+
+
+
+We can test code with this command
 
 ```bash
 go run . i
@@ -195,6 +210,7 @@ Starting installation process..
 ```
 
 Some nice features that have cobra by default is the use of command -h that show the availabe commands and descriptions
+
 
 ```bash
 go run . -h
@@ -209,13 +225,10 @@ Flags:
   -h, --help   help for go-npm
 ```
 
-We have created a good starting point for our project, next we will start to download a real package.
 
 # Config component
 
-Like we said we need to download files from npm registry in order to create the correct node_modules,  for that we create a folder for this project in the .config folder of the user home directory.
-
-So, create a config folder and a config.go file inside it
+Create a config folder and a config.go file inside it
 
 ```sh
 mkdir config
@@ -223,7 +236,7 @@ cd config
 touch config.go
 ```
 
-config.go
+*config/config.go-
 
 ```go
 package config
@@ -287,11 +300,10 @@ func New() (*Config, error) {
 }
 
 ```
+Here we intialize the config directories that the we need to run the install command and also for tests,
+some are created in .config/go-npm folder and others are local to the project that run install command like node_modules, 
 
-
-in this file we define all the config directories that the we need for our package manager, 
-some are created in .config/go-npm folder and others are local to the project like node_modules, 
-New method is used to initialize all config dirs with the correct paths and create folders in path  .config/go-npm
+The structure will be like this
 
 
 ```
@@ -300,16 +312,18 @@ New method is used to initialize all config dirs with the correct paths and crea
        ├── manifest
        │
        └── packages
+	   │
+       └── tarball
+
 ```
 in later sections we will go in detail about each folder purpose.
 
 
 # Parse package json
 
-First step after run the install command is to parse the package.json to obtain the list of dependencies to install
-(for now we ignore devDependencies and peerDependencies).
+First step after run the install command is to parse the package.json in order to obtain the list of dependencies that need to be installed (for now we ignore devDependencies and peerDependencies).
 
-The idea is to install dependencies for a node express server, so create a package.json file with this content
+The idea is to install dependencies for a node express server, so create a package.json file with this content in root of project.
 
 ```json
 {
@@ -326,7 +340,7 @@ The idea is to install dependencies for a node express server, so create a packa
 }
 ```
 
-Add and index.js to test the server
+Add and index.js that have a basic express server to test 
 
 ```js
 const express = require('express');
@@ -352,6 +366,8 @@ app.listen(PORT, () => {
 ```
 
 If we run command `node index.js` we will get an error because express is not installed yet.
+
+TODO ADD IMAGE OF ERROR
 
 We need to read the package.json file and parse the dependencies field, for that we will create a new packagejson package that will handle that.
 
