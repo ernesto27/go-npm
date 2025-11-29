@@ -10,7 +10,7 @@
 This tutorial is about to create a npm package manager version like using golang.
 We start from scratch with a basic implementation in which we can run a install command like "go run . i" a run simple express server.
 This first version will be a starting point and functional for simple projects but does not have all the features that npm have (lock file, cache optimizations, global installations, etc), but beside that is a good starting point to understand how this works and to get a first glance of system programming in general.
-
+add this code 
 
 ![demo](code/demo.gif)
 
@@ -96,8 +96,8 @@ go mod init go-npm
 We will use some external dependencies tthat help us with CLI commands and testing, so let's install them now.
 
 ```bash
-go get install github.com/spf13/cobra@v1.10.1
-go get install github.com/stretchr/testify@v1.11.1       
+go get github.com/spf13/cobra@v1.10.1
+go get github.com/stretchr/testify@v1.11.1       
 ```
 
 *main.go*
@@ -236,7 +236,7 @@ cd config
 touch config.go
 ```
 
-*config/config.go-
+*config/config.go*
 
 ```go
 package config
@@ -319,12 +319,13 @@ The structure will be like this
 in later sections we will go in detail about each folder purpose.
 
 
-# Parse package json
+# Packagejson component
 
-First step after run the install command is to parse the package.json in order to obtain the list of dependencies that need to be installed (for now we ignore devDependencies and peerDependencies).
+First step after run the install command is to parse the package.json, this is necessary to obtaint the dependencies that need to be installed (for now we ignore devDependencies and peerDependencies, etc).
 
-The idea is to install dependencies for a node express server, so create a package.json file with this content in root of project.
+Let create a package.json file with this content in root of project.
 
+*package.json*
 ```json
 {
   "name": "go-npm-example",
@@ -340,7 +341,12 @@ The idea is to install dependencies for a node express server, so create a packa
 }
 ```
 
-Add and index.js that have a basic express server to test 
+this is basic package.json for a node server that define a express dependency
+
+
+For test server add this in root project
+
+*index.js*
 
 ```js
 const express = require('express');
@@ -365,21 +371,26 @@ app.listen(PORT, () => {
 });
 ```
 
-If we run command `node index.js` we will get an error because express is not installed yet.
+This is nodejs code that setup and initialize a express server and two endpoints  / and /health 
 
-TODO ADD IMAGE OF ERROR
 
-We need to read the package.json file and parse the dependencies field, for that we will create a new packagejson package that will handle that.
+Now if we run command `node index.js` we will get this error
 
-Create a new folder packagejson and a file packagejson.go inside it
+![alt text](image.png)
 
+This is expected because node_modeules folder does not exists 
+
+
+Next step is to read the package.json file and parse the dependencies property, for that we will create a new packagejson package that will handle that.
+
+Run this
 ```sh
 mkdir packagejson
 cd packagejson
 touch packagejson.go
 ```
 
-packagejson.go
+*packagejson.go*
 
 ```go
 type PackageJSON struct {
@@ -437,8 +448,10 @@ func (p *PackageJSONParser) Parse(filePath string) (*PackageJSON, error) {
 }
 ```
 
-This file create a struct PackageJSON that represent the fields of package.json file, there is a lot of fields that we are not going to use for now, but we define them for future use,  the important field for now is Dependencies that is a map of package name to version string.
-like this 
+This file create a struct PackageJSON that represent the fields of a package.json structure, 
+there is a lot of fields that we are not going to use for now, but is fine to setup this now for future uses,  
+the focus at moment is the "dependencies" prop, that is like this.
+
 
 ```json
 "dependencies": {
@@ -446,19 +459,30 @@ like this
 }
 ```
 
-NewPackageJSONParser method is used to initialize the parser, this receives a config instance struct previously created.
-Parse method should read file pass as argument and unmarshal the json content into PackageJSON struct, also intialize fields of the parse for later uses.
+NewPackageJSONParser method is used to initialize the PackageJSON struct. this receives a config instance as parameter.
+
+Parse method have this parameter:
+- filePath: path to package.json file
+
+Read the content of file,  return error if file not exist, 
+
+try to unmarshal the json content into PackageJSON struct, return error if json is invalid.
+
+setup internal properties for future use and return the PackageJSON struct and nil error if everything ois ok.
+
 
 ### Testing the parser
-One of the most important things is this kind of project is test since beginning, even in this infancy stage, critical to add new features and ensure that existing functionality is not broken.
+One of the most important things is this kind of project is make tests at start of the project, this is critical when add new features of make fix to check that 
+all is working.
 
-Create a packagejson_test.go file in the same folder 
 
+run this
 ```sh
+cd packagejson
 touch packagejson_test.go
 ```
 
-packagejson_test.go
+*packagejson/packagejson_test.go*
 
 ```go
 package packagejson
@@ -591,13 +615,15 @@ func TestPackageJSONParser_Parse(t *testing.T) {
 
 ```
 
-We use TableDriveTest pattern to define multiple test cases for the Parse method of PackageJSONParser.
+We use TableDriveTest pattern to define multiple test cases for the Parse method,
+we have a setupFile file function that create the context and files for each test case,  and a validate function to check expected results.
 
-- Valid basic package.json: We create a valid file. We expect no error, and we check that the parser - correctly read the name, version, and dependencies.
+- Valid basic package.json: We create a valid file. We expect no error, and we check that the parser correctly read the name, version, and dependencies.
 - Non-existent file: We don't create a file at all. We expect an error.
-- Invalid JSON: We create a file with broken JSON (like a missing bracket). We expect an error.
+- Invalid JSON: We create a file with broken JSON (like a missing bracket). We expect an error. 
 
-After we loop through each test case,  we change to the temp dir created for the test case, this is important for not create files in our current working dir,  and run the Parse method.
+After we loop through each test case,  change to the temp dir created for the test case, this is important for not create files in our current working dir, 
+and run tests in and isolated folder that does not affect our repo,  also we use the testify library to make assertions easier.
 
 Run test  
 
@@ -611,8 +637,8 @@ ok      go-npm/packagejson      0.003s
 
 # Manifest component
 
-Ok, after parsing the package.json and get the dependencies to install, we need to obtain the manifest file from npm registry, 
-this is necessary to download the correspoding tarball for the package.
+After parsing the package.json and get the dependencies to install, we need to obtain the manifest file from npm registry, 
+this is necessary to download the correspoding tarball associated to the package.
 
 For example if we have this express dependency in package.json
 
@@ -621,10 +647,10 @@ For example if we have this express dependency in package.json
     "express": "^5.0.1"
 }
 ```
-If we go to this url https://registry.npmjs.org/express and obtain the manifest file in json format.
+And go to this url https://registry.npmjs.org/express and obtain the manifest file.
 
 This return a json file with a lot of information about the package, versions, dist-tags, time, maintainers, etc.
-we will focus in versions for now, this is a object of all available entries, wit this structure
+we will focus in versions for now, for example this is a object of all available entries, wit this structure
 
 ```json
 "versions": {
@@ -638,10 +664,10 @@ we will focus in versions for now, this is a object of all available entries, wi
     },
    // more items
 }
+```
 
 So for that we will create a new manifest package that will handle the manifest fetching and parsing.
 
-Create a new folder manifest and a file manifest.go inside it
 
 ```bash
 mkdir manifest
@@ -649,7 +675,7 @@ cd manifest
 touch manifest.go
 ```
 
-manifest.go
+*manifest/manifest.go*
 
 ```go
 package manifest
@@ -819,21 +845,26 @@ func (m *Manifest) Download(pkg string) (NPMPackage, error) {
 
 ```
 
-We add a NewManifest method to expect as parameter two paramenter
+We add a NewManifest method that expect this parameters
 - manifestPath: path where to save the manifest file
 - npmRegistryURL: base url of npm registry
 
-various structs are defined to represent the manifest file structure, the parent of all are NPMPackage.
+various structs are defined to represent the manifest file structure, the parent of all them are NPMPackage.
 
-in Download method we get as parameter the name of the package "express" for example, 
-check statusCode response from call to DownloadFile function,  
-after we read file and unmarshal the json content into NPMPackage struct that represent the manifest file structure and return it.
+in Download method we get as parameter the name of the package , "express" for example, 
+
+we create the full url ,  in case of express this will be https://registry.npmjs.org/express
+
+Then we use the DownloadFile method from utils package (create next) to download the manifest  and save in disk.
+
+After we read the file and unmarshal the json content into NPMPackage struct and return it.
+
+If error happen in any step we return that.
 
 
 
 
-
-Create utils package and a utils.go file inside it
+Create utils file
 
 ```sh
 mkdir utils
@@ -841,7 +872,7 @@ cd utils
 touch utils.go
 ```
 
-utils.go
+*utils/utils.go*
 
 ```go
 package utils
@@ -911,9 +942,9 @@ Here we define two function that will be useful in multiple components
 - DownloadFile: download a file from url and save it to filename path
 - CreateDir: create a directory if not exist in especified path
 
-Ok, we have the base to check if we can download a manifest file from npm,  to do that update the install file
+Ok, we have the base code to check if we can download a manifest file from npm,  to do that update the install command
 
-cmd/install.go
+*cmd/install.go*
 ```go
 func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("Starting installation process...")
@@ -940,7 +971,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 ```
 
-here we call config.New method to initialize config properties and folders needed for this project,  after call manifest Download to save manifest file in this path ~/.config/go-npm/manifest/express.json
+here we call config.New method to initialize config properties and folders needed for this project,  then call manifest Download method to save manifest, for now we harcode "express" package to test.
+
 
 if everything work we should see the file create in our machine.
 
@@ -949,14 +981,14 @@ ls ~/.config/go-npm/manifest
 express.json
 ```
 
-Like we did for packagejsongo package we need to create a new test file manifest_test.go
+Like we did for packagejsongo package we are goint to create a new test file manifest_test.go
 
 ```sh
 cd manifest
 touch manifest_test.go
 ```
 
-add this code 
+*manifest/manifest_test.go*
 ```go
 package manifest
 
@@ -1040,7 +1072,7 @@ in this test we add two test cases
 - Download express manifest: we expect to download the manifest file correctly and check that the file exist
 - Error with invalid package name: we expect an error when try to download a manifest for a non existent package
 
-We also add a function call setupTestDirs, this is very importatn because set configure the test to run in /temp directory and not make a conflict 
+We also add a function call setupTestDirs, this is very important because set configure the test to run in /temp directory and not make a conflict 
 with path ~/.config/go-npm/manifest.
 
 Also note that use the real npm registry url to download, another option is to use a mock libraty to prevent go to internet, but for simplicity and expect real world behavior we go this way.
@@ -1453,7 +1485,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 			name:     "Tilde with no higher patch version",
 			version:  "~2.1.5",
 			versions: []string{"2.0.0", "2.1.0", "2.1.3", "2.1.5", "2.2.0"},
-			latest:   "2.2.0",
+			latest:   "2.2.0",ile ~/.config/go-npm/manifest/express.json
 			expected: "2.1.5",
 		},
 		{
