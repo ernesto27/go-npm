@@ -2,15 +2,13 @@
 
 # Intro
 
-
-This tutorial is about to create a npm package manager version like using golang.
-We start from scratch with a basic implementation in which we can run a install command like "go run . i" a run simple express server.
-This first version will be a starting point and functional for simple projects but does not have all the features that npm have (lock file, cache optimizations, global installations, etc), but beside that is a good starting point to understand how this works and to get a first glance of system programming in general.
-add this code 
+This tutorial is about creating an npm package manager clone using Go.
+We start from scratch with a basic implementation in which we can run an install command like "go run . i" and run a simple express server.
+This first version will be a starting point and functional for simple projects but does not have all the features that npm has (lock file, cache optimizations, global installations, etc), but besides that, it is a good starting point to understand how this works and to get a first glance of system programming in general.
 
 ![demo](code/demo.gif)
 
-Before start is necessary to know at least in the base form the current status of different js/node packages.
+Before starting, it is necessary to know at least in the base form the current status of different JS/Node package managers.
 
 Here are the streamlined definitions for your tutorial:
 
@@ -26,10 +24,10 @@ Designed for maximum disk efficiency. Instead of copying files for every project
 ### Bun
 An ultra-fast, all-in-one JavaScript runtime and package manager written in Zig. It aims to replace the entire modern toolchain by acting as your runtime, bundler, test runner, and package manager simultaneously.
 
-Although all of this projects use differentes languages and were created in differente context and times, all share the same final goal, that is to downlaod and install packages in a node_modules folder to be use in a front or backend project.
+Although all of these projects use different languages and were created in different contexts and times, all share the same final goal, that is to download and install packages in a node_modules folder to be used in a front or backend project.
 
 
-We will create a base and solid desing structure to build upon it in future versions, also with testing to ensure that our code is working as expected. 
+We will create a base and solid design structure to build upon it in future versions, also with testing to ensure that our code is working as expected. 
 
 
 # Table of contents
@@ -48,7 +46,7 @@ We will create a base and solid desing structure to build upon it in future vers
 
 # How npm install works 
 
-Before start the project we need to understand how the command npm install works in detail,  what components are involved and how they interact with each other.
+Before starting the project we need to understand how the command npm install works in detail,  what components are involved and how they interact with each other.
 This is a base diagram, we will start simple and not think at moment about cache and performance optimizations.
 
 ![npm install diagram](diagram.jpg)
@@ -64,7 +62,7 @@ This is a base diagram, we will start simple and not think at moment about cache
    npm go to the registry url of the packages and downloads the manifest file that contain all the versions and metadata of the package.
 
 4. **Download tarball**
-   npm downloads the actual package file (a .tgz archive),  obtain from manifiest file.
+   npm downloads the actual package file (a .tgz archive),  obtained from the manifest file.
 
 5. **Extract tarball**
    npm unpacks the .tgz file into user machine.
@@ -94,7 +92,7 @@ cd go-npm
 go mod init go-npm 
 ```
 
-We will use some external dependencies tthat help us with CLI commands and testing, so let's install them now.
+We will use some external dependencies that help us with CLI commands and testing, so let's install them now.
 
 ```bash
 go get github.com/spf13/cobra@v1.10.1
@@ -114,7 +112,7 @@ func main() {
 }
 ```
 
-in main function we intiliaize the cmd package (create next) that will handle the CLI commands using cobra library.
+in main function we initialize the cmd package (create next) that will handle the CLI commands using cobra library.
 
 
 
@@ -156,7 +154,7 @@ func init() {
 }
 ```
 Here we created the root command for our NPM clone and define some descriptions, 
-Execute is the function that is called in main.go and start the cobra init,  if happens show message and exist app.
+Execute is the function that is called in main.go and start the cobra init,  if error happens show message and exit the app.
 
 init is a special function in go that is called when the package is used, here we disable the default completion command that cobra add by default.
 
@@ -469,7 +467,7 @@ Read the content of file,  return error if file not exist,
 
 try to unmarshal the json content into PackageJSON struct, return error if json is invalid.
 
-setup internal properties for future use and return the PackageJSON struct and nil error if everything ois ok.
+setup internal properties for future use and return the PackageJSON struct and nil error if everything is ok.
 
 
 ### Testing the parser
@@ -616,7 +614,7 @@ func TestPackageJSONParser_Parse(t *testing.T) {
 
 ```
 
-We use TableDriveTest pattern to define multiple test cases for the Parse method,
+We use TableDrivenTest pattern to define multiple test cases for the Parse method,
 we have a setupFile file function that create the context and files for each test case,  and a validate function to check expected results.
 
 - Valid basic package.json: We create a valid file. We expect no error, and we check that the parser correctly read the name, version, and dependencies.
@@ -941,7 +939,7 @@ func CreateDir(dirPath string) error {
 
 Here we define two function that will be useful in multiple components
 - DownloadFile: download a file from url and save it to filename path
-- CreateDir: create a directory if not exist in especified path
+- CreateDir: create a directory if not exist in specified path
 
 Ok, we have the base code to check if we can download a manifest file from npm,  to do that update the install command
 
@@ -972,7 +970,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 ```
 
-here we call config.New method to initialize config properties and folders needed for this project,  then call manifest Download method to save manifest, for now we harcode "express" package to test.
+here we call config.New method to initialize config properties and folders needed for this project,  then call manifest Download method to save manifest, for now we hardcode "express" package to test.
 
 
 if everything work we should see the file create in our machine.
@@ -982,7 +980,7 @@ ls ~/.config/go-npm/manifest
 express.json
 ```
 
-Like we did for packagejsongo package we are goint to create a new test file manifest_test.go
+Like we did for packagejsongo package we are going to create a new test file manifest_test.go
 
 ```sh
 cd manifest
@@ -1069,11 +1067,11 @@ func TestDownloadManifest_Download(t *testing.T) {
 
 ```
 
-in this test we add two test cases
+In this test we add two test cases
 - Download express manifest: we expect to download the manifest file correctly and check that the file exist
 - Error with invalid package name: we expect an error when try to download a manifest for a non existent package
 
-We also add a function call setupTestDirs, this is very important because this make that tests  run in /temp directory and prevent a confilict  
+We also add a function call setupTestDirs, this is very important because this make that tests  run in /temp directory and prevent a conflict  
 with path ~/.config/go-npm/manifest, that is used by when run install command.
 
 Also note that use the real npm registry url here,  another option is to use a mock library to prevent go to internet, but for simplicity and also to test real world context, we prefer to go in this way.
@@ -1879,7 +1877,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vi := newVersionInfo()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersion(tc.version, pkg)
+			result := vi.GetVersion(tc.version, pkg)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -2023,7 +2021,7 @@ We find the version in the Version map prop from npmPackage,  if not found we re
 after we get the tarball URL from the Dist property, we need the name of package@version from the URL, 
 for example if we have this URL https://registry.npmjs.org/express/-/express-4.4.1.tgz ,  we save in variable filename only express-4.4.1.tgz .
 then we create the full file path using the /tmp and the filename, 
-after we call utilily function DownloadFile to do the actual word,
+after we call utility function DownloadFile to do the actual work,
 and finally return path of tar (we need that later) and err result (we check err in the caller)
 
 
@@ -2058,7 +2056,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("Resolved version:", resolvedVersion)
 
 	tarball := tarball.NewTarball()
-	if err := tarball.Download(resolvedVersion, npmPackage); err != nil {
+	if _, err := tarball.Download(resolvedVersion, npmPackage); err != nil {
 		panic(err)
 	}
 
@@ -2326,11 +2324,11 @@ Then we loop through each file in the tar archive using tr.Next() and do this.
 
 ExtractFile method handles the actual file extraction process.
 
-- Creat parent filder,  we use os.MkdirAll to create any necessary parent directories for the target file.
+- Create parent folder,  we use os.MkdirAll to create any necessary parent directories for the target file.
 - Create and write file using io.CopyBuffer to copy data from the tar reader to the target.
 
 
-Update install comand to test this 
+Update install command to test this 
 
 *cmd/install.go*
 ```go
@@ -2613,7 +2611,7 @@ We add test for stripPackagePrefix method to ensure it correctly removes the lea
 
 TestTGZExtractorExtract configure various scenarios for extracting tarball 
 
-We need to setup testing context in order to made sure that all is working as expected, 
+We need to setup testing context in order to make sure that all is working as expected, 
 for that in setupFunc we call functions setupTestExtractorDirs and createTestTarball to prepare the source tarball and destination directory.
 
 - Expected error or not
@@ -2621,7 +2619,7 @@ for that in setupFunc we call functions setupTestExtractorDirs and createTestTar
 - Check content of files extracted.
 
 
-# Manager component 
+make # Manager component 
 
 At moment we have a solid list of components that have a specific task to perform.  
 
@@ -2760,12 +2758,11 @@ In the `Install` method, we process dependencies using a queue-based approach:
 - We determine the exact version to install based on the version constraint (e.g., `^1.0.0`).
 - We download the `.tgz` file for the resolved version.
 - We extract the tarball contents into the `node_modules` directory.
--
-    *   We parse the `package.json` of the newly installed package.
-    *   We add its dependencies to the queue if they haven't been installed yet.
-- Mark as Installed**: We record the package as installed.
+- We parse the `package.json` of the newly installed package.
+- We add its dependencies to the queue if they haven't been installed yet.
+- **Mark as Installed**: We record the package as installed.
 
-New method intializes all packages dependencies , if error return the error, otherwise return Manager instance.
+New method initializes all packages dependencies , if error return the error, otherwise return Manager instance.
 
 This will install the root dependencies and all child dependencies recursively,  so we can update install command to test.
 
@@ -2789,7 +2786,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 }
 ```
 
-We remove al the logic and initialization to the New manager method and call the Install method.
+We remove all the logic and initialization to the New manager method and call the Install method.
 
 Run 
 
@@ -2820,7 +2817,7 @@ Check with curl
 curl http://localhost:3000
 ```
 
-We should this this response
+We should see this response
 
 > {"message":"Hello World!"}
 
