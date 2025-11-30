@@ -10,6 +10,7 @@ import (
 	"npm-packager/packagejson"
 	"npm-packager/tarball"
 	"npm-packager/utils"
+	"npm-packager/version"
 	"os"
 	"path/filepath"
 	"testing"
@@ -44,7 +45,7 @@ func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
 		ParseJsonManifest: newParseJsonManifest(),
-		VersionInfo:       newVersionInfo(),
+		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
 	}

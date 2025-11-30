@@ -7,11 +7,12 @@ import (
 	"npm-packager/config"
 	"npm-packager/etag"
 	"npm-packager/extractor"
-	"npm-packager/manifest"
+	manifestpkg "npm-packager/manifest"
 	"npm-packager/packagecopy"
 	"npm-packager/packagejson"
 	"npm-packager/tarball"
 	"npm-packager/utils"
+	"npm-packager/version"
 	"os"
 	"path"
 	"path/filepath"
@@ -46,12 +47,12 @@ type PackageManager struct {
 	config            *config.Config
 	packages          Packages
 	packageLock       *packagejson.PackageLock
-	manifest          *manifest.Manifest
+	manifest          *manifestpkg.Manifest
 	tarball           *tarball.Tarball
 	extractor         *extractor.TGZExtractor
 	packageCopy       *packagecopy.PackageCopy
 	parseJsonManifest *ParseJsonManifest
-	versionInfo       *VersionInfo
+	versionInfo       *version.Info
 	packageJsonParse  *packagejson.PackageJSONParser
 	binLinker         *binlink.BinLinker
 	downloadMu        sync.Mutex
@@ -69,13 +70,13 @@ type Packages map[string]Package
 
 type Dependencies struct {
 	Config            *config.Config
-	Manifest          *manifest.Manifest
+	Manifest          *manifestpkg.Manifest
 	Etag              *etag.Etag
 	Tarball           *tarball.Tarball
 	Extractor         *extractor.TGZExtractor
 	PackageCopy       *packagecopy.PackageCopy
 	ParseJsonManifest *ParseJsonManifest
-	VersionInfo       *VersionInfo
+	VersionInfo       *version.Info
 	PackageJsonParse  *packagejson.PackageJSONParser
 	BinLinker         *binlink.BinLinker
 }
@@ -154,7 +155,7 @@ func BuildDependencies() (*Dependencies, error) {
 		return nil, fmt.Errorf("failed to create config: %w", err)
 	}
 
-	manifest, err := manifest.NewManifest(cfg.BaseDir, npmRegistryURL)
+	manifest, err := manifestpkg.NewManifest(cfg.BaseDir, npmRegistryURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manifest: %w", err)
 	}
@@ -172,7 +173,7 @@ func BuildDependencies() (*Dependencies, error) {
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
 		ParseJsonManifest: newParseJsonManifest(),
-		VersionInfo:       newVersionInfo(),
+		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
 	}, nil
@@ -713,7 +714,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				var currentEtag string
 				var isGitHubDep bool
 				var commitSHA string
-				var npmPackage *NPMPackage
+				var npmPackage *manifestpkg.NPMPackage
 				var err error
 
 				// Check if this is a GitHub dependency
@@ -792,7 +793,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						return
 					}
 
-					version = pm.versionInfo.getVersion(item.Dep.Version, npmPackage)
+					version = pm.versionInfo.GetVersion(item.Dep.Version, npmPackage)
 				}
 
 				packageKey := actualName + "@" + version
@@ -1136,14 +1137,14 @@ func (pm *PackageManager) validatePeerDependencies(packageLock *packagejson.Pack
 			}
 
 			// Check if installed version satisfies the peer requirement
-			npmPackage := &NPMPackage{
-				Versions: map[string]Version{
+			npmPackage := &manifestpkg.NPMPackage{
+				Versions: map[string]manifestpkg.Version{
 					installedVersion: {Version: installedVersion},
 				},
-				DistTags: DistTags{Latest: installedVersion},
+				DistTags: manifestpkg.DistTags{Latest: installedVersion},
 			}
 
-			resolvedVersion := pm.versionInfo.getVersion(peerVersionConstraint, npmPackage)
+			resolvedVersion := pm.versionInfo.GetVersion(peerVersionConstraint, npmPackage)
 			if resolvedVersion != installedVersion {
 				warnings = append(warnings, fmt.Sprintf(
 					"%s requires peer %s@%s but version %s is installed",

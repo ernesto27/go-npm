@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"npm-packager/manifest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,7 +15,7 @@ func TestParseJsonManifestParse(t *testing.T) {
 		setup       func(*testing.T) string
 		expectErr   bool
 		errContains string
-		assertPkg   func(*testing.T, *NPMPackage)
+		assertPkg   func(*testing.T, *manifest.NPMPackage)
 	}{
 		{
 			name: "valid manifest",
@@ -30,7 +31,7 @@ func TestParseJsonManifestParse(t *testing.T) {
 
 				return filePath
 			},
-			assertPkg: func(t *testing.T, pkg *NPMPackage) {
+			assertPkg: func(t *testing.T, pkg *manifest.NPMPackage) {
 				assert.Equal(t, "example", pkg.Name)
 				assert.Equal(t, "1.0.0", pkg.DistTags.Latest)
 

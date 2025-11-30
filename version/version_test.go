@@ -1,21 +1,22 @@
-package manager
+package version
 
 import (
+	"npm-packager/manifest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func createTestPackage(versions []string, latest string) *NPMPackage {
-	pkg := &NPMPackage{
-		DistTags: DistTags{
+func createTestPackage(versions []string, latest string) *manifest.NPMPackage {
+	pkg := &manifest.NPMPackage{
+		DistTags: manifest.DistTags{
 			Latest: latest,
 		},
-		Versions: make(map[string]Version),
+		Versions: make(map[string]manifest.Version),
 	}
 
 	for _, v := range versions {
-		pkg.Versions[v] = Version{
+		pkg.Versions[v] = manifest.Version{
 			Version: v,
 		}
 	}
@@ -23,7 +24,7 @@ func createTestPackage(versions []string, latest string) *NPMPackage {
 	return pkg
 }
 
-func TestVersionInfo_getVersion(t *testing.T) {
+func TestInfo_GetVersion(t *testing.T) {
 	testCases := []struct {
 		name     string
 		version  string
@@ -516,9 +517,9 @@ func TestVersionInfo_getVersion(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			vi := newVersionInfo()
+			vi := New()
 			pkg := createTestPackage(tc.versions, tc.latest)
-			result := vi.getVersion(tc.version, pkg)
+			result := vi.GetVersion(tc.version, pkg)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

@@ -1,22 +1,23 @@
-package manager
+package version
 
 import (
+	"npm-packager/manifest"
 	"sort"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
 
-type VersionInfo struct {
+type Info struct {
 }
 
-func newVersionInfo() *VersionInfo {
-	return &VersionInfo{}
+func New() *Info {
+	return &Info{}
 }
 
-// getVersion resolves a version constraint to a specific version string
+// GetVersion resolves a version constraint to a specific version string
 // It supports all npm semver ranges: ^, ~, >=, <=, >, <, ||, hyphen ranges, wildcards, and exact versions
-func (v *VersionInfo) getVersion(version string, npmPackage *NPMPackage) string {
+func (v *Info) GetVersion(version string, npmPackage *manifest.NPMPackage) string {
 	// Handle empty version or "latest" keyword
 	if version == "" || version == "latest" || version == "*" {
 		return npmPackage.DistTags.Latest
