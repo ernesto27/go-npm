@@ -1,9 +1,5 @@
 # TUTORIAL  
 
-
-
-
-
 # Intro
 
 
@@ -33,16 +29,21 @@ An ultra-fast, all-in-one JavaScript runtime and package manager written in Zig.
 Although all of this projects use differentes languages and were created in differente context and times, all share the same final goal, that is to downlaod and install packages in a node_modules folder to be use in a front or backend project.
 
 
-
 We will create a base and solid desing structure to build upon it in future versions, also with testing to ensure that our code is working as expected. 
 
 
-## Table of contents
-- How npm install works
-- Config component
-- Show example of the end result. 
-- dependencies required 
-- setup project, folders,  hello world  
+# Table of contents
+- [Intro](#intro)
+- [How npm install works](#how-npm-install-works)
+- [Setup project](#setup-project)
+- [Config component](#config-component)
+- [Packagejson component](#packagejson-component)
+- [Manifest component](#manifest-component)
+- [Version component](#version-component)
+- [Tarball Component](#tarball-component)
+- [Extractor component](#extractor-component)
+- [Manager component](#manager-component)
+- [Conclusion](#conclusion)
 
 
 # How npm install works 
@@ -50,7 +51,7 @@ We will create a base and solid desing structure to build upon it in future vers
 Before start the project we need to understand how the command npm install works in detail,  what components are involved and how they interact with each other.
 This is a base diagram, we will start simple and not think at moment about cache and performance optimizations.
 
-![npm install diagram](go-npm-i.png)
+![npm install diagram](diagram.jpg)
 
 
 1. **npm install**
@@ -1072,10 +1073,10 @@ in this test we add two test cases
 - Download express manifest: we expect to download the manifest file correctly and check that the file exist
 - Error with invalid package name: we expect an error when try to download a manifest for a non existent package
 
-We also add a function call setupTestDirs, this is very important because set configure the test to run in /temp directory and not make a conflict 
-with path ~/.config/go-npm/manifest.
+We also add a function call setupTestDirs, this is very important because this make that tests  run in /temp directory and prevent a confilict  
+with path ~/.config/go-npm/manifest, that is used by when run install command.
 
-Also note that use the real npm registry url to download, another option is to use a mock libraty to prevent go to internet, but for simplicity and expect real world behavior we go this way.
+Also note that use the real npm registry url here,  another option is to use a mock library to prevent go to internet, but for simplicity and also to test real world context, we prefer to go in this way.
 
 Run with 
 
@@ -1087,26 +1088,33 @@ You should expect to not have any errors here.
 
 
 
-
-
 # Version component
 
-Next step after manifiest is to get the correct version from package json dependencies,  
-there is a lot of formats that we can use
+Next step is to get the correct version from package json dependencies,  
+there is a lot of options in version definitions.
 
-examples:
+*Examples:*
 
 - Exact version: "express": "5.0.1"
 - Caret range: "express": "^5.0.1"
 - Tilde range: "express": "~5.0.1"
 - Greater than or equal to: "express": ">=5.0.1"
 - Less than: "express": "<6.0.0"
+- etc
 
-Etc. 
 
-to handle this we will use a external library that help us with semver parsing and comparison.
+To handle this we will use a external library that help us with semver parsing and comparison.
 
-> library that implements the full Semantic Versioning (SemVer) 2.0.0 specification, providing precise parsing, comparison, validation, and constraint-matching of version strings
+> Semantic Versioning (SemVer) is a versioning system that uses the format MAJOR.MINOR.PATCH, where:
+>
+> MAJOR changes break compatibility,
+>
+> MINOR adds features without breaking existing ones,
+>
+> PATCH fixes bugs without changing behavior.
+>
+> It defines clear, predictable rules so tools can automatically resolve and compare versions safely.
+
 
 Install wit this command
 
@@ -1123,7 +1131,7 @@ cd version
 touch version.go
 ```
 
-version.go
+*version/version.go*
 
 ```go
 package version
@@ -1264,52 +1272,42 @@ type ParseJsonManifest struct {
 // getVersion resolves a version constraint to a specific version string
 // It supports all npm semver ranges: ^, ~, >=, <=, >, <, ||, hyphen ranges, wildcards, and exact versions
 func (v *VersionInfo) GetVersion(version string, npmPackage *NPMPackage) string {
-	// Handle empty version or "latest" keyword
 	if version == "" || version == "latest" || version == "*" {
 		return npmPackage.DistTags.Latest
 	}
 
-	// Check if version is a known dist-tag
 	if version == "next" && npmPackage.DistTags.Next != "" {
 		return npmPackage.DistTags.Next
 	}
 
-	// Try to parse as semver constraint
 	constraint, err := semver.NewConstraint(version)
 	if err != nil {
-		// If parsing fails, try as exact version match
 		if versionObj, exists := npmPackage.Versions[version]; exists {
 			return versionObj.Version
 		}
-		// Fallback to latest for invalid constraints
 		return npmPackage.DistTags.Latest
 	}
 
-	// Filter versions that match the constraint
 	var matchingVersions []*semver.Version
 	for vStr := range npmPackage.Versions {
 		semverVersion, err := semver.NewVersion(vStr)
 		if err != nil {
-			continue // Skip invalid versions in registry
+			continue 
 		}
 		if constraint.Check(semverVersion) {
 			matchingVersions = append(matchingVersions, semverVersion)
 		}
 	}
 
-	// If no versions match, fallback to latest
 	if len(matchingVersions) == 0 {
 		return npmPackage.DistTags.Latest
 	}
 
-	// Sort versions and return the highest
 	sort.Sort(semver.Collection(matchingVersions))
 	bestVersion := matchingVersions[len(matchingVersions)-1]
 
-	// Return the original version string (preserves exact format from registry)
 	originalVersion := bestVersion.Original()
 
-	// Fallback to String() if Original() doesn't exist in the map (normalization edge case)
 	if _, exists := npmPackage.Versions[originalVersion]; exists {
 		return originalVersion
 	}
@@ -1319,7 +1317,6 @@ func (v *VersionInfo) GetVersion(version string, npmPackage *NPMPackage) string 
 		return stringVersion
 	}
 
-	// If neither exists (shouldn't happen), try with "v" prefix removed
 	trimmedOriginal := strings.TrimPrefix(originalVersion, "v")
 	if _, exists := npmPackage.Versions[trimmedOriginal]; exists {
 		return trimmedOriginal
@@ -1330,24 +1327,36 @@ func (v *VersionInfo) GetVersion(version string, npmPackage *NPMPackage) string 
 		return trimmedString
 	}
 
-	// Last resort: return the original format
 	return trimmedOriginal
 }
 
 ```
 
-In this file we define a struct NPMPackage and child props that represent the manifest file, 
-also create a GetVersion method that receive two parameters.
+In this file we define a struct NPMPackage and nested structs  that represent the manifest file values, 
+is this part of the tutorial we focus only on this Versions map[string]Version property,  but is a good idea to define now the full structure for future uses.
+
+GetVersion method receive two parameters.
 - version: version string obtained from package.json dependencies
 - npmPackage: manifest struct previously defined
 
-we used the semver library to parse and compare versions to obtain the correct version of the specification.
+
+If version is empty, "latest" or "*", return the latest version from distTags,
+
+if version is value "next" and DistTags.Next is not empty return that value,
+
+After we do this
+
+- Parsing the constraint.
+- Filtering the list of all available versions to find ones that satisfy the rule.
+- Sorting the matches to find the highest valid version.
+- Returning that version string (handling format differences like v1.0.0 vs 1.0.0)
 
 
 
-Add test  
+### Create test file
 
-version/version_test.go
+
+*version/version_test.go*
 
 ```go
 package manager
@@ -1528,7 +1537,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 		{
 			name:     "Range with > and < (exclusive)",
 			version:  "> 1.0.0 < 2.0.0",
-			versions: []string{"1.0.0", "1.0.1", "1.5.0", "1.9.9", "2.0.0"},
+			versions: []string{"1.0.0", "1.0.1", "1.5.0", "1.9.9", "2.0.0"},GetVersion
 			latest:   "2.0.0",
 			expected: "1.9.9",
 		},
@@ -1877,8 +1886,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 }
 
 ```
-
-There is complete suite of test of most of the cases for version parsing and selection logic.
+In this file we define a set of unit tests for the GetVersion method, covering a wide range of scenarios and edge cases.
 
 Run test 
 ```bash
@@ -1889,7 +1897,7 @@ And verify all tests pass successfully.
 
 We could check this in install command with this code 
 
-cmd/install.go
+*cmd/install.go*
 
 ```go
 
@@ -1921,7 +1929,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 }
 ```
 
-We should see this response 
+We harcoded the version in call to v.GetVersion to ^4.0.0, we should get this response
 
 ```
 Starting installation process...
@@ -1931,10 +1939,10 @@ Resolved version: 4.21.2
 In this case version 4.21.2 is the highest version that satisfies the ^4.0.0 constraint.
 
 
-# Download Tarball
+# Tarball Component
 
-After obtain the version,  we are prepared to download the tarball file from the npm registry ,  we can find the tarball URL 
-from the manifest file, in the "dist" property specifically.
+After obtain the version,  we are prepared to download the tarball file from the npm registry,  we can find the tarball URL 
+from the manifest file, in the "dist.tarball" property.
 
 
 example express  
@@ -1964,7 +1972,7 @@ touch tarball.go
 
 add this content
 
-tarball/tarball.go
+*tarball/tarball.go*
 
 ```go
 package tarball
@@ -2003,24 +2011,26 @@ func (d *Tarball) Download(version string, npmPackage manifest.NPMPackage) (stri
 }
 ```
 
-In NewTarball we set a variable that represent the place i which we saved the download files,  we will use the /tmp directory or our system ( later we extracted this and copy to node_modules).
+In NewTarball we set a variable that represent the place in which we saved the download files,  
+we will use the /tmp directory or our system ( later we extracted content of tarball file and copy that to node_modules ).
 
 In Download we expect two parameters.
 - version: the resolved version string obtained from GetVersion method
 - npmPackage: the manifest struct previously defined
 
-We find the version in the Version map,  if not found we return an error.
+We find the version in the Version map prop from npmPackage,  if not found we return an error.
 
-after we get the tarball URL from the Dist property, get name of package from URL, 
+after we get the tarball URL from the Dist property, we need the name of package@version from the URL, 
 for example if we have this URL https://registry.npmjs.org/express/-/express-4.4.1.tgz ,  we save in variable filename only express-4.4.1.tgz .
-then we create the full file path using the /tmp and the filename, afer we call utilily function DownloadFile to do the work
-and finally return path of tar (we need that later) and err result.
+then we create the full file path using the /tmp and the filename, 
+after we call utilily function DownloadFile to do the actual word,
+and finally return path of tar (we need that later) and err result (we check err in the caller)
 
 
 
 we can test this in command install
 
-cmd/install.go
+*cmd/install.go*
 
 ```go	
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -2069,7 +2079,7 @@ express-4.21.2.tgz
 
 Like always add test for tarball.go 
 
-tarball/tarball_test.go
+*tarball/tarball_test.go*
 
 ```go
 package tarball
@@ -2166,16 +2176,16 @@ func TestDownloadTarball_Download(t *testing.T) {
 }
 ```
 
-We create two test cases,  one for successful download of express tarball,  and another for invalid package that should return error. 
+We create two test cases,  one for successful download of express tarball,  and another for invalid package that should return and error. 
 in Validate function we check the following.
 - if we expect error or not
 - use os.Stat to check if the file exists in the temp directory
 
 
 
-# Extract Tarball
+# Extractor component
 
-Now that we have the tarball file in /tmp, is time to extract the content and copy in node_modules directory.
+Now that we have the tarball file in /tmp, we are preprared to extract the content and copy in the node_modules directory.
 for that we create a new package
 
 ```bash
@@ -2184,6 +2194,7 @@ cd extractor
 touch extractor.go
 ```
 
+*extractor/extractor.go*
 ```go
 package extractor
 
@@ -2299,6 +2310,9 @@ We create a NewTGZExtractor function that initialize the bufferSize with 32KB fo
 In Extract method we expect two parameters
 - srcPath: the path of the tarball file to extract
 - destPath: the destination directory where the contents will be extracted (in our case node_modules)
+
+Next we do the followings.
+
 - We tried to open the sourceFile,  if error happens returns that
 - In order to read file we created a buffered reader with the specified buffer size.
 - Create a gzip reader to handle decompression of the .tgz file.
@@ -2318,7 +2332,7 @@ ExtractFile method handles the actual file extraction process.
 
 Update install comand to test this 
 
-cmd/install.go
+*cmd/install.go*
 ```go
 func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("Starting installation process...")
@@ -2370,7 +2384,7 @@ go run . i
 
 You should see a node_modules folder created with express package inside.
 
-We can check the version of express wit this command
+We can check the express server with this.
 
 ```js
 node index.js
@@ -2735,5 +2749,94 @@ func (m *Manager) Install() error {
 }
 ```
 
+We create a `New` function that initializes the `Manager` struct with all necessary dependencies.
+
+In the `Install` method, we process dependencies using a queue-based approach:
+
+- We start by adding all direct dependencies from the root `package.json` to a job queue.
+- We loop while the queue is not empty, taking the first job (package) from the queue.
+- We skip the package if it has already been installed to avoid infinite loops or redundant work.
+- We fetch the package metadata (manifest) from the registry.
+- We determine the exact version to install based on the version constraint (e.g., `^1.0.0`).
+- We download the `.tgz` file for the resolved version.
+- We extract the tarball contents into the `node_modules` directory.
+-
+    *   We parse the `package.json` of the newly installed package.
+    *   We add its dependencies to the queue if they haven't been installed yet.
+- Mark as Installed**: We record the package as installed.
+
 New method intializes all packages dependencies , if error return the error, otherwise return Manager instance.
+
+This will install the root dependencies and all child dependencies recursively,  so we can update install command to test.
+
+*cmd/install.go*
+```go
+func runInstall(cmd *cobra.Command, args []string) error {
+	fmt.Println("Starting installation process...")
+
+	mgr, err := manager.New()
+	if err != nil {
+		return err
+	}
+
+	if err := mgr.Install(); err != nil {
+		return err
+	}
+
+	fmt.Printf("Package installed to %s\n", filepath.Join("node_modules", "express"))
+
+	return nil
+}
+```
+
+We remove al the logic and initialization to the New manager method and call the Install method.
+
+Run 
+
+```bash 
+go run . i 
+```
+
+You should see all dependencies installed in node_modules folder.
+
+```bash
+ls node_modules
+```
+
+![alt text](image-1.png)
+
+And express server 
+
+```bash
+node index.js
+```
+Response 
+
+> Server is running on port 3000
+
+Check with curl 
+
+```bash
+curl http://localhost:3000
+```
+
+We should this this response
+
+> {"message":"Hello World!"}
+
+## Conclusion
+
+In this tutorial, we have successfully built a functional package manager in Go that mimics the core behavior of `npm`.
+
+We covered:
+- **Project Structure**: Setting up a Go project with a clear architecture.
+- **Registry Interaction**: Fetching package metadata (manifests) from the npm registry.
+- **Version Resolution**: Implementing Semantic Versioning (SemVer) to resolve version constraints like `^1.0.0`.
+- **Tarball Handling**: Downloading and extracting `.tgz` package files securely.
+- **Dependency Management**: Recursively installing dependencies using a queue-based approach.
+- **CLI Integration**: Creating a command-line interface using `cobra`.
+
+You now have a working tool that can install  packages like `express` and its dependencies and run a basic server,
+In later tutorials we can explore more features like handling devDependencies, peerDependencies, caching, and publishing packages.
+
 
