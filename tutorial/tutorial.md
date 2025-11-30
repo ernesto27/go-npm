@@ -299,11 +299,26 @@ func New() (*Config, error) {
 }
 
 ```
-Here we intialize the config directories that the we need to run the install command and also for tests,
-some are created in .config/go-npm folder and others are local to the project that run install command like node_modules, 
 
-The structure will be like this
+We define a `Config` struct to hold all the configuration paths and URLs needed for the application.
 
+- **Config Struct**:
+    - `NpmRegistryURL`: The base URL for the npm registry (e.g., `https://registry.npmjs.org/`).
+    - `BaseDir`: The root directory for our application's configuration and cache (`~/.config/go-npm`).
+    - `ManifestDir`: Directory to store downloaded package manifests.
+    - `TarballDir`: Directory to store downloaded `.tgz` files.
+    - `PackagesDir`: Directory for extracted packages (if we were using a global store).
+    - `LocalNodeModules`: The path to the local `node_modules` directory in the user's project.
+
+- **New()**:
+    - **Returns**: A pointer to a `Config` instance and an error if initialization fails.
+    - **Logic**:
+        - Gets the user's home directory.
+        - Constructs the base configuration path (`~/.config/go-npm`).
+        - Creates all necessary subdirectories (`manifest`, `tarball`, `packages`) using `utils.CreateDir`.
+        - Returns the populated `Config` struct.
+
+The structure created on your disk will look like this:
 
 ```
 ~/.config/go-npm
@@ -447,27 +462,20 @@ func (p *PackageJSONParser) Parse(filePath string) (*PackageJSON, error) {
 }
 ```
 
-This file create a struct PackageJSON that represent the fields of a package.json structure, 
-there is a lot of fields that we are not going to use for now, but is fine to setup this now for future uses,  
-the focus at moment is the "dependencies" prop, that is like this.
+We define the `PackageJSON` struct to map the standard `package.json` fields. While we include many fields for completeness, our primary focus is on `Dependencies`.
 
+- **NewPackageJSONParser(cfg *config.Config)**:
+    - **Parameters**: `cfg` - A pointer to the `Config` struct.
+    - **Returns**: A pointer to a new `PackageJSONParser` instance.
+    - **Logic**: Initializes the parser with the provided configuration.
 
-```json
-"dependencies": {
-    "express": "^5.0.1"
-}
-```
-
-NewPackageJSONParser method is used to initialize the PackageJSON struct. this receives a config instance as parameter.
-
-Parse method have this parameter:
-- filePath: path to package.json file
-
-Read the content of file,  return error if file not exist, 
-
-try to unmarshal the json content into PackageJSON struct, return error if json is invalid.
-
-setup internal properties for future use and return the PackageJSON struct and nil error if everything is ok.
+- **Parse(filePath string)**:
+    - **Parameters**: `filePath` - The path to the `package.json` file to parse.
+    - **Returns**: A pointer to the parsed `PackageJSON` struct and an error if parsing fails.
+    - **Logic**:
+        - Reads the file content using `os.ReadFile`.
+        - Unmarshals the JSON content into the `PackageJSON` struct.
+        - Stores the parsed data and original content in the parser instance for potential future use (e.g., writing back changes).
 
 
 ### Testing the parser
@@ -844,21 +852,21 @@ func (m *Manifest) Download(pkg string) (NPMPackage, error) {
 
 ```
 
-We add a NewManifest method that expect this parameters
-- manifestPath: path where to save the manifest file
-- npmRegistryURL: base url of npm registry
+- **NewManifest(manifestPath string, npmRegistryURL string)**:
+    - **Parameters**:
+        - `manifestPath`: The local directory path where manifest files will be cached.
+        - `npmRegistryURL`: The base URL of the NPM registry (e.g., `https://registry.npmjs.org/`).
+    - **Returns**: A pointer to an initialized `Manifest` struct or an error.
 
-various structs are defined to represent the manifest file structure, the parent of all them are NPMPackage.
-
-in Download method we get as parameter the name of the package , "express" for example, 
-
-we create the full url ,  in case of express this will be https://registry.npmjs.org/express
-
-Then we use the DownloadFile method from utils package (create next) to download the manifest  and save in disk.
-
-After we read the file and unmarshal the json content into NPMPackage struct and return it.
-
-If error happen in any step we return that.
+- **Download(pkg string)**:
+    - **Parameters**:
+        - `pkg`: The name of the package to download (e.g., `express`).
+    - **Returns**: An `NPMPackage` struct containing the parsed manifest data, or an error if the download fails.
+    - **Logic**:
+        1.  **Construct URL**: Appends the package name to the registry URL (e.g., `https://registry.npmjs.org/express`).
+        2.  **Download File**: Calls `utils.DownloadFile` to fetch the JSON manifest and save it to the local cache directory.
+        3.  **Validate Response**: Checks if the HTTP status code is 200 OK.
+        4.  **Parse JSON**: Opens the downloaded file and unmarshals the JSON content into the `NPMPackage` struct.
 
 
 
@@ -937,9 +945,29 @@ func CreateDir(dirPath string) error {
 }
 ```
 
-Here we define two function that will be useful in multiple components
-- DownloadFile: download a file from url and save it to filename path
-- CreateDir: create a directory if not exist in specified path
+- **DownloadFile(url, filename string)**:
+    - **Parameters**:
+        - `url`: The URL of the file to download.
+        - `filename`: The local path where the file should be saved.
+    - **Returns**: The HTTP status code and an error if the operation fails.
+    - **Logic**:
+        1.  **Create Request**: Creates a new HTTP GET request.
+        2.  **Execute Request**: Sends the request using an HTTP client.
+        3.  **Check Status**:
+            - Returns `StatusNotModified` if applicable.
+            - Returns an error if the status code is not 200 OK.
+        4.  **Create Directory**: Ensures the parent directory exists using `os.MkdirAll`.
+        5.  **Create File**: Creates the destination file.
+        6.  **Write Content**: Streams the response body to the file using `io.Copy`.
+        7.  **Cleanup**: Removes the file if writing fails.
+
+- **CreateDir(dirPath string)**:
+    - **Parameters**:
+        - `dirPath`: The path of the directory to create.
+    - **Returns**: An error if creation fails.
+    - **Logic**:
+        - Checks if the directory already exists.
+        - If not, creates it with `0755` permissions (rwxr-xr-x).
 
 Ok, we have the base code to check if we can download a manifest file from npm,  to do that update the install command
 
@@ -1330,24 +1358,19 @@ func (v *VersionInfo) GetVersion(version string, npmPackage *NPMPackage) string 
 
 ```
 
-In this file we define a struct NPMPackage and nested structs  that represent the manifest file values, 
-is this part of the tutorial we focus only on this Versions map[string]Version property,  but is a good idea to define now the full structure for future uses.
-
-GetVersion method receive two parameters.
-- version: version string obtained from package.json dependencies
-- npmPackage: manifest struct previously defined
-
-
-If version is empty, "latest" or "*", return the latest version from distTags,
-
-if version is value "next" and DistTags.Next is not empty return that value,
-
-After we do this
-
-- Parsing the constraint.
-- Filtering the list of all available versions to find ones that satisfy the rule.
-- Sorting the matches to find the highest valid version.
-- Returning that version string (handling format differences like v1.0.0 vs 1.0.0)
+- **GetVersion(version string, npmPackage *NPMPackage)**:
+    - **Parameters**:
+        - `version`: The version constraint string (e.g., `^1.0.0`, `~2.1.0`, `latest`).
+        - `npmPackage`: The manifest data containing all available versions and distribution tags.
+    - **Returns**: The specific version string that best satisfies the constraint (e.g., `1.2.3`).
+    - **Logic**:
+        1.  **Handle Special Cases**:
+            - If `version` is empty, `latest`, or `*`, returns the version tagged as `latest` in `dist-tags`.
+            - If `version` is `next` and a `next` tag exists, returns that version.
+        2.  **Parse Constraint**: Uses the `semver` library to parse the version constraint string. If parsing fails, it checks if the version string exists directly in the package versions (exact match fallback).
+        3.  **Filter Versions**: Iterates through all available versions in the manifest and collects those that satisfy the constraint.
+        4.  **Sort and Select**: Sorts the matching versions in ascending order and selects the highest one.
+        5.  **Format Return Value**: Ensures the returned version string matches the format used in the manifest (handling potential `v` prefixes).
 
 
 
@@ -1405,472 +1428,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 			latest:   "2.3.1",
 			expected: "2.3.1",
 		},
-		{
-			name:     "Latest keyword",
-			version:  "latest",
-			versions: []string{"1.0.0", "1.5.0", "2.3.1"},
-			latest:   "2.3.1",
-			expected: "2.3.1",
-		},
-
-		// Exact versions
-		{
-			name:     "Exact version exists",
-			version:  "1.2.3",
-			versions: []string{"1.0.0", "1.2.3", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.3",
-		},
-		{
-			name:     "Exact version does not exist",
-			version:  "1.2.4",
-			versions: []string{"1.0.0", "1.2.3", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "2.0.0", // Falls back to latest
-		},
-
-		// Caret ranges (^)
-		{
-			name:     "Caret allows minor and patch updates - major 1",
-			version:  "^1.2.3",
-			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.3.0", "1.9.9", "2.0.0", "2.1.0"},
-			latest:   "2.1.0",
-			expected: "1.9.9", // Highest in major version 1
-		},
-		{
-			name:     "Caret with major version 0",
-			version:  "^0.2.3",
-			versions: []string{"0.1.0", "0.2.3", "0.2.5", "0.3.0", "1.0.0"},
-			latest:   "1.0.0",
-			expected: "0.2.5", // For 0.x, ^0.2.3 means >=0.2.3 <0.3.0 (only patch updates)
-		},
-		{
-			name:     "Caret with exact match only",
-			version:  "^1.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "1.0.0",
-		},
-		{
-			name:     "Caret with multiple candidates",
-			version:  "^2.0.0",
-			versions: []string{"1.9.9", "2.0.0", "2.0.1", "2.1.0", "2.5.7", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.5.7",
-		},
-		{
-			name:     "Caret with no matching versions",
-			version:  "^5.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Caret with lower base version",
-			version:  "^1.0.0",
-			versions: []string{"0.9.0", "1.0.0", "1.1.0", "1.2.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.0",
-		},
-
-		// Tilde ranges (~)
-		{
-			name:     "Tilde allows patch updates only",
-			version:  "~1.2.3",
-			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.2.9", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.9", // Highest patch in 1.2.x
-		},
-		{
-			name:     "Tilde with exact match only",
-			version:  "~1.2.3",
-			versions: []string{"1.2.3", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.3",
-		},
-		{
-			name:     "Tilde with no higher patch version",
-			version:  "~2.1.5",
-			versions: []string{"2.0.0", "2.1.0", "2.1.3", "2.1.5", "2.2.0"},
-			latest:   "2.2.0",ile ~/.config/go-npm/manifest/express.json
-			expected: "2.1.5",
-		},
-		{
-			name:     "Tilde with multiple patch versions",
-			version:  "~3.0.0",
-			versions: []string{"2.9.9", "3.0.0", "3.0.1", "3.0.5", "3.0.10", "3.1.0"},
-			latest:   "3.1.0",
-			expected: "3.0.10",
-		},
-		{
-			name:     "Tilde with no matching versions",
-			version:  "~5.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Tilde excludes minor version changes",
-			version:  "~1.2.0",
-			versions: []string{"1.1.9", "1.2.0", "1.2.1", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.1", // Does not include 1.3.0
-		},
-
-		// Complex ranges
-		{
-			name:     "Range with >= and <",
-			version:  ">= 2.1.2 < 3.0.0",
-			versions: []string{"2.0.0", "2.1.0", "2.1.2", "2.5.0", "2.9.9", "3.0.0", "3.1.0"},
-			latest:   "3.1.0",
-			expected: "2.9.9",
-		},
-		{
-			name:     "Range with >= and <= (inclusive)",
-			version:  ">= 1.0.0 <= 2.0.0",
-			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.1.0"},
-			latest:   "2.1.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Range with > and < (exclusive)",
-			version:  "> 1.0.0 < 2.0.0",
-			versions: []string{"1.0.0", "1.0.1", "1.5.0", "1.9.9", "2.0.0"},GetVersion
-			latest:   "2.0.0",
-			expected: "1.9.9",
-		},
-		{
-			name:     "Range with > and <= (mixed)",
-			version:  "> 1.5.0 <= 2.5.0",
-			versions: []string{"1.5.0", "1.6.0", "2.0.0", "2.5.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.5.0",
-		},
-		{
-			name:     "Range with no matching versions",
-			version:  ">= 5.0.0 < 6.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Narrow range with one match",
-			version:  ">= 1.2.3 < 1.2.5",
-			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.2.5", "1.3.0"},
-			latest:   "1.3.0",
-			expected: "1.2.4",
-		},
-		{
-			name:     "Range at boundary (lower bound inclusive)",
-			version:  ">= 1.0.0 < 2.0.0",
-			versions: []string{"0.9.9", "1.0.0", "1.5.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.5.0",
-		},
-
-		// Wildcards
-		{
-			name:     "Single x returns latest",
-			version:  "x",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Major.x matches any minor/patch in that major",
-			version:  "1.x",
-			versions: []string{"1.0.0", "1.2.0", "1.5.9", "2.0.0", "2.1.0"},
-			latest:   "2.1.0",
-			expected: "1.5.9",
-		},
-		{
-			name:     "Major.minor.x matches any patch",
-			version:  "2.1.x",
-			versions: []string{"2.0.0", "2.1.0", "2.1.5", "2.1.9", "2.2.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.1.9",
-		},
-		{
-			name:     "Case insensitive X",
-			version:  "1.X",
-			versions: []string{"1.0.0", "1.3.0", "1.7.2", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.7.2",
-		},
-		{
-			name:     "Major.X.X pattern",
-			version:  "2.X.X",
-			versions: []string{"1.9.9", "2.0.0", "2.1.0", "2.5.7", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.5.7",
-		},
-		{
-			name:     "No matching versions for wildcard",
-			version:  "5.x",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Wildcard with exact major match",
-			version:  "3.x",
-			versions: []string{"3.0.0", "3.0.1", "3.1.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "3.1.0",
-		},
-
-		// OR constraints (||)
-		{
-			name:     "OR with two caret ranges",
-			version:  "^1.0.0 || ^2.0.0",
-			versions: []string{"1.0.0", "1.2.0", "1.9.9", "2.0.0", "2.1.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.1.0", // Highest between 1.9.9 and 2.1.0
-		},
-		{
-			name:     "OR with exact versions",
-			version:  "1.0.0 || 2.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.0.0", // Higher of the two
-		},
-		{
-			name:     "OR with one matching constraint",
-			version:  "^1.0.0 || ^5.0.0",
-			versions: []string{"1.0.0", "1.5.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "1.5.0", // Only ^1.0.0 matches
-		},
-		{
-			name:     "OR with tilde and caret",
-			version:  "~1.2.3 || ^2.0.0",
-			versions: []string{"1.2.3", "1.2.5", "1.3.0", "2.0.0", "2.5.0"},
-			latest:   "2.5.0",
-			expected: "2.5.0", // ^2.0.0 gives higher version
-		},
-		{
-			name:     "OR with no matching constraints",
-			version:  "^5.0.0 || ^6.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "OR with wildcards",
-			version:  "1.x || 3.x",
-			versions: []string{"1.0.0", "1.5.0", "2.0.0", "3.0.0", "3.2.0"},
-			latest:   "3.2.0",
-			expected: "3.2.0", // Highest between 1.5.0 and 3.2.0
-		},
-		{
-			name:     "OR with multiple constraints (3 options)",
-			version:  "^1.0.0 || ^2.0.0 || ^3.0.0",
-			versions: []string{"1.0.0", "1.1.0", "2.0.0", "2.2.0", "3.0.0", "3.5.0"},
-			latest:   "3.5.0",
-			expected: "3.5.0",
-		},
-
-		// Simple ranges
-		{
-			name:     "Greater than or equal",
-			version:  ">=1.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Greater than or equal - returns highest version >= base",
-			version:  ">=1.5.0",
-			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
-			latest:   "2.5.0",
-			expected: "2.5.0",
-		},
-		{
-			name:     "Greater or equal - exact match at base",
-			version:  ">=2.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Greater or equal - no matching versions",
-			version:  ">=5.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Greater or equal - with patch versions",
-			version:  ">=1.2.3",
-			versions: []string{"1.2.0", "1.2.3", "1.2.5", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Less than or equal",
-			version:  "<=2.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Less or equal - returns highest version <= base",
-			version:  "<=2.0.0",
-			versions: []string{"1.0.0", "1.5.0", "2.0.0", "2.5.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Less or equal - no matching versions",
-			version:  "<=0.5.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0", // Falls back to latest
-		},
-		{
-			name:     "Less or equal - with patch versions",
-			version:  "<=1.2.5",
-			versions: []string{"1.0.0", "1.2.3", "1.2.5", "1.2.7", "1.3.0"},
-			latest:   "1.3.0",
-			expected: "1.2.5",
-		},
-		{
-			name:     "Greater than",
-			version:  ">1.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Greater than - returns highest version > base",
-			version:  ">1.5.0",
-			versions: []string{"1.0.0", "1.5.0", "1.8.0", "2.0.0", "2.5.0"},
-			latest:   "2.5.0",
-			expected: "2.5.0",
-		},
-		{
-			name:     "Greater than - excludes exact match",
-			version:  ">2.0.0",
-			versions: []string{"1.0.0", "2.0.0", "2.0.1", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Greater than - no matching versions",
-			version:  ">5.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "5.0.0"},
-			latest:   "5.0.0",
-			expected: "5.0.0", // Falls back to latest
-		},
-		{
-			name:     "Greater than - with patch versions",
-			version:  ">1.2.3",
-			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Less than",
-			version:  "<2.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "1.0.0",
-		},
-		{
-			name:     "Less than - returns highest version < base",
-			version:  "<2.0.0",
-			versions: []string{"1.0.0", "1.5.0", "1.9.9", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "1.9.9",
-		},
-		{
-			name:     "Less than - excludes exact match",
-			version:  "<2.0.0",
-			versions: []string{"1.0.0", "1.5.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.5.0",
-		},
-		{
-			name:     "Less than - no matching versions",
-			version:  "<1.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0", // Falls back to latest
-		},
-		{
-			name:     "Less than - with patch versions",
-			version:  "<1.3.0",
-			versions: []string{"1.0.0", "1.2.3", "1.2.9", "1.3.0", "2.0.0"},
-			latest:   "2.0.0",
-			expected: "1.2.9",
-		},
-
-		// Hyphen ranges
-		{
-			name:     "Hyphen range - inclusive on both ends",
-			version:  "1.0.0 - 2.0.0",
-			versions: []string{"0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.1.0"},
-			latest:   "2.1.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Hyphen range - narrow range",
-			version:  "1.2.3 - 1.2.5",
-			versions: []string{"1.2.0", "1.2.3", "1.2.4", "1.2.5", "1.3.0"},
-			latest:   "1.3.0",
-			expected: "1.2.5",
-		},
-		{
-			name:     "Hyphen range - no matching versions",
-			version:  "5.0.0 - 6.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0", "4.0.0"},
-			latest:   "4.0.0",
-			expected: "4.0.0", // Falls back to latest
-		},
-		{
-			name:     "Hyphen range - single version in range",
-			version:  "1.5.0 - 2.5.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "2.0.0",
-		},
-		{
-			name:     "Hyphen range - all versions in range",
-			version:  "0.1.0 - 10.0.0",
-			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
-			latest:   "3.0.0",
-			expected: "3.0.0",
-		},
-		{
-			name:     "Hyphen range - exact boundaries",
-			version:  "2.0.0 - 3.0.0",
-			versions: []string{"1.9.9", "2.0.0", "2.5.0", "3.0.0", "3.0.1"},
-			latest:   "3.0.1",
-			expected: "3.0.0",
-		},
-
-		// Edge cases
-		{
-			name:     "Package with only one version",
-			version:  "^1.0.0",
-			versions: []string{"1.0.0"},
-			latest:   "1.0.0",
-			expected: "1.0.0",
-		},
-		{
-			name:     "Empty versions map",
-			version:  "^1.0.0",
-			versions: []string{},
-			latest:   "",
-			expected: "",
-		},
-		{
-			name:     "Very high version numbers",
-			version:  "^100.200.300",
-			versions: []string{"100.200.300", "100.200.400", "100.300.0", "200.0.0"},
-			latest:   "200.0.0",
-			expected: "100.300.0",
-		},
+		/// more...
 	}
 
 	for _, tc := range testCases {
@@ -1882,9 +1440,10 @@ func TestVersionInfo_getVersion(t *testing.T) {
 		})
 	}
 }
-
 ```
 In this file we define a set of unit tests for the GetVersion method, covering a wide range of scenarios and edge cases.
+
+> Full test are found in zip download file
 
 Run test 
 ```bash
@@ -2009,20 +1568,20 @@ func (d *Tarball) Download(version string, npmPackage manifest.NPMPackage) (stri
 }
 ```
 
-In NewTarball we set a variable that represent the place in which we saved the download files,  
-we will use the /tmp directory or our system ( later we extracted content of tarball file and copy that to node_modules ).
+- **NewTarball()**:
+    - **Returns**: A pointer to a `Tarball` instance initialized with the system's temporary directory path.
 
-In Download we expect two parameters.
-- version: the resolved version string obtained from GetVersion method
-- npmPackage: the manifest struct previously defined
-
-We find the version in the Version map prop from npmPackage,  if not found we return an error.
-
-after we get the tarball URL from the Dist property, we need the name of package@version from the URL, 
-for example if we have this URL https://registry.npmjs.org/express/-/express-4.4.1.tgz ,  we save in variable filename only express-4.4.1.tgz .
-then we create the full file path using the /tmp and the filename, 
-after we call utility function DownloadFile to do the actual work,
-and finally return path of tar (we need that later) and err result (we check err in the caller)
+- **Download(version string, npmPackage manifest.NPMPackage)**:
+    - **Parameters**:
+        - `version`: The specific version string to download (e.g., `4.21.2`).
+        - `npmPackage`: The manifest data containing the tarball URL.
+    - **Returns**: The absolute file path of the downloaded `.tgz` file and an error if the download fails.
+    - **Logic**:
+        1.  **Lookup Version**: Retrieves the version metadata from `npmPackage.Versions`. Returns an error if the version is not found.
+        2.  **Get URL**: Extracts the tarball URL from the `Dist` property (e.g., `https://registry.npmjs.org/express/-/express-4.21.2.tgz`).
+        3.  **Determine Filename**: Uses `path.Base` to extract the filename from the URL (e.g., `express-4.21.2.tgz`).
+        4.  **Construct Path**: Joins the temporary directory path with the filename.
+        5.  **Download**: Calls `utils.DownloadFile` to stream the file content from the URL to the local path.
 
 
 
@@ -2303,29 +1862,29 @@ func (e *TGZExtractor) stripPackagePrefix(path string) string {
 
 ```
 
-We create a NewTGZExtractor function that initialize the bufferSize with 32KB for efficient reading and writing.
+- **NewTGZExtractor()**:
+    - **Returns**: A pointer to a `TGZExtractor` initialized with a 32KB buffer size for efficient I/O operations.
 
-In Extract method we expect two parameters
-- srcPath: the path of the tarball file to extract
-- destPath: the destination directory where the contents will be extracted (in our case node_modules)
+- **Extract(srcPath, destPath string)**:
+    - **Parameters**:
+        - `srcPath`: The absolute path to the source `.tgz` file.
+        - `destPath`: The target directory where contents should be extracted (e.g., `node_modules/package-name`).
+    - **Returns**: An error if the extraction fails.
+    - **Logic**:
+        1.  **Open File**: Opens the source tarball file.
+        2.  **Initialize Readers**: Sets up a buffered reader, a Gzip reader for decompression, and a Tar reader for archive access.
+        3.  **Iterate Entries**: Loops through each file header in the tar archive.
+        4.  **Sanitize Path**: Calls `stripPackagePrefix` to remove the top-level `package/` directory common in NPM tarballs.
+        5.  **Security Check**: Verifies that the target path is within the destination directory to prevent path traversal attacks.
+        6.  **Extract Entry**:
+            - If it's a directory, it's created implicitly by `os.MkdirAll` when extracting files.
+            - If it's a regular file, calls `extractFile` to write the content.
 
-Next we do the followings.
-
-- We tried to open the sourceFile,  if error happens returns that
-- In order to read file we created a buffered reader with the specified buffer size.
-- Create a gzip reader to handle decompression of the .tgz file.
-- Create a tar reader to read the contents of the tar archive.
-- Create a temp buffer for copying data.
-
-Then we loop through each file in the tar archive using tr.Next() and do this.
-- Read header information for the current file.
-- Clean path by removing the leading package directory (e.g., tmp/).
-- Extract files and folders in destPath.
-
-ExtractFile method handles the actual file extraction process.
-
-- Create parent folder,  we use os.MkdirAll to create any necessary parent directories for the target file.
-- Create and write file using io.CopyBuffer to copy data from the tar reader to the target.
+- **extractFile(tr *tar.Reader, target string, header *tar.Header, copyBuffer []byte)**:
+    - **Logic**:
+        - Creates the parent directory for the target file.
+        - Creates the file with the permissions specified in the tar header.
+        - Copies the file content from the tar reader to the new file using a shared buffer.
 
 
 Update install command to test this 
@@ -2619,7 +2178,7 @@ for that in setupFunc we call functions setupTestExtractorDirs and createTestTar
 - Check content of files extracted.
 
 
-make # Manager component 
+# Manager component 
 
 At moment we have a solid list of components that have a specific task to perform.  
 
@@ -2747,22 +2306,27 @@ func (m *Manager) Install() error {
 }
 ```
 
-We create a `New` function that initializes the `Manager` struct with all necessary dependencies.
+- **New()**:
+    - **Returns**: A pointer to a fully initialized `Manager` struct or an error.
+    - **Logic**:
+        - Loads configuration.
+        - Initializes the Manifest, Version, Tarball, and Extractor components.
+        - Parses the root `package.json` to get the initial list of dependencies.
 
-In the `Install` method, we process dependencies using a queue-based approach:
-
-- We start by adding all direct dependencies from the root `package.json` to a job queue.
-- We loop while the queue is not empty, taking the first job (package) from the queue.
-- We skip the package if it has already been installed to avoid infinite loops or redundant work.
-- We fetch the package metadata (manifest) from the registry.
-- We determine the exact version to install based on the version constraint (e.g., `^1.0.0`).
-- We download the `.tgz` file for the resolved version.
-- We extract the tarball contents into the `node_modules` directory.
-- We parse the `package.json` of the newly installed package.
-- We add its dependencies to the queue if they haven't been installed yet.
-- **Mark as Installed**: We record the package as installed.
-
-New method initializes all packages dependencies , if error return the error, otherwise return Manager instance.
+- **Install()**:
+    - **Returns**: An error if the installation process fails.
+    - **Logic**:
+        1.  **Initialize Queue**: Creates a job queue and populates it with the direct dependencies from the root `package.json`.
+        2.  **Process Queue**: Enters a loop that continues as long as there are jobs in the queue.
+        3.  **Check Cache**: Checks the `installed` map to see if the current package has already been processed. If so, it skips to the next job to prevent infinite loops and redundant work.
+        4.  **Download Manifest**: Fetches the package metadata from the registry.
+        5.  **Resolve Version**: Determines the exact version to install based on the semantic versioning constraint (e.g., `^1.0.0` -> `1.2.3`).
+        6.  **Download Tarball**: Downloads the `.tgz` file for the resolved version.
+        7.  **Extract**: Unpacks the tarball into the `node_modules` directory.
+        8.  **Process Child Dependencies**:
+            - Parses the `package.json` of the *newly installed* package.
+            - Adds its dependencies to the queue if they haven't been installed yet.
+        9.  **Mark Complete**: Adds the package name to the `installed` map.
 
 This will install the root dependencies and all child dependencies recursively,  so we can update install command to test.
 
