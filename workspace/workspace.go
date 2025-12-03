@@ -157,16 +157,26 @@ func (wr *WorkspaceRegistry) Validate() []error {
 
 // CreateSymlink creates a symlink for a workspace package in node_modules
 func (wr *WorkspaceRegistry) CreateSymlink(nodeModulesDir, packageName, workspacePath string) error {
-	linkPath := filepath.Join(nodeModulesDir, packageName)
+	absNodeModules, err := filepath.Abs(nodeModulesDir)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for node_modules: %w", err)
+	}
+
+	absWorkspace, err := filepath.Abs(workspacePath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for workspace: %w", err)
+	}
+
+	linkPath := filepath.Join(absNodeModules, packageName)
 
 	if strings.Contains(packageName, "/") {
-		scopeDir := filepath.Join(nodeModulesDir, filepath.Dir(packageName))
+		scopeDir := filepath.Join(absNodeModules, filepath.Dir(packageName))
 		if err := os.MkdirAll(scopeDir, 0755); err != nil {
 			return fmt.Errorf("failed to create scope directory: %w", err)
 		}
 	}
 
-	relPath, err := filepath.Rel(filepath.Dir(linkPath), workspacePath)
+	relPath, err := filepath.Rel(filepath.Dir(linkPath), absWorkspace)
 	if err != nil {
 		return fmt.Errorf("failed to calculate relative path: %w", err)
 	}

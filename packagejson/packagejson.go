@@ -139,10 +139,11 @@ type PackageJSONParser struct {
 }
 
 type PackageLock struct {
-	Name            string                 `json:"name"`
-	Version         string                 `json:"version"`
-	LockfileVersion int                    `json:"lockfileVersion"`
+	Name                 string                 `json:"name"`
+	Version              string                 `json:"version"`
+	LockfileVersion      int                    `json:"lockfileVersion"`
 	Requires             bool                   `json:"requires"`
+	Workspaces           map[string]string      `json:"workspaces,omitempty"`
 	Dependencies         map[string]string      `json:"dependencies"`
 	DevDependencies      map[string]string      `json:"devDependencies,omitempty"`
 	OptionalDependencies map[string]string      `json:"optionalDependencies,omitempty"`
@@ -154,6 +155,7 @@ type PackageItem struct {
 	Name                 string            `json:"name,omitempty"`
 	Version              string            `json:"version,omitempty"`
 	Resolved             string            `json:"resolved,omitempty"`
+	Link                 bool              `json:"link,omitempty"`
 	Integrity            string            `json:"integrity,omitempty"`
 	License              any               `json:"license,omitempty"`
 	Etag                 string            `json:"etag,omitempty"`

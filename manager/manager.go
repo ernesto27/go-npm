@@ -13,6 +13,7 @@ import (
 	"npm-packager/tarball"
 	"npm-packager/utils"
 	"npm-packager/version"
+	"npm-packager/workspace"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,6 +56,7 @@ type PackageManager struct {
 	versionInfo       *version.Info
 	packageJsonParse  *packagejson.PackageJSONParser
 	binLinker         *binlink.BinLinker
+	workspaceRegistry *workspace.WorkspaceRegistry
 	downloadMu        sync.Mutex
 	downloadLocks     map[string]*sync.Mutex
 }
@@ -269,6 +271,24 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 		return err
 	}
 
+	// Discover workspaces first (needed for both fresh and incremental installs)
+	if len(data.GetWorkspaces()) > 0 {
+		rootDir, _ := filepath.Abs(".")
+		registry := workspace.NewWorkspaceRegistry(rootDir, pm.packageJsonParse)
+
+		if err := registry.Discover(data); err != nil {
+			return fmt.Errorf("failed to discover workspaces: %w", err)
+		}
+
+		pm.workspaceRegistry = registry
+
+		if errors := registry.Validate(); len(errors) > 0 {
+			for _, e := range errors {
+				fmt.Printf("Warning: %v\n", e)
+			}
+		}
+	}
+
 	if pm.packageJsonParse.PackageLock != nil {
 		packagesToAdd, packagesToRemove := pm.packageJsonParse.ResolveDependencies()
 
@@ -292,6 +312,12 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 
 		pm.packageLock = pm.packageJsonParse.PackageLock
 
+		// Create workspace symlinks even when lock file exists
+		err = pm.CreateWorkspaceSymlinks()
+		if err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -300,9 +326,33 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 		return err
 	}
 
+	err = pm.CreateWorkspaceSymlinks()
+	if err != nil {
+		return err
+	}
+
 	err = pm.packageJsonParse.CreateLockFile(pm.packageLock, false)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (pm *PackageManager) CreateWorkspaceSymlinks() error {
+	if pm.workspaceRegistry == nil {
+		return nil
+	}
+
+	fmt.Println("Creating workspace symlinks...")
+
+	for _, wsPkg := range pm.workspaceRegistry.Packages {
+		err := pm.workspaceRegistry.CreateSymlink(pm.extractedPath, wsPkg.Name, wsPkg.Path)
+		if err != nil {
+			return fmt.Errorf("failed to create symlink for %s: %w", wsPkg.Name, err)
+		}
+
+		fmt.Printf("  ✓ Linked %s\n", wsPkg.Name)
 	}
 
 	return nil
@@ -355,6 +405,12 @@ func (pm *PackageManager) removeDevOnlyPackages() {
 func (pm *PackageManager) InstallFromCache() error {
 	packagesToInstall := make(map[string]packagejson.PackageItem)
 	for pkgPath := range pm.packageLock.Packages {
+		item := pm.packageLock.Packages[pkgPath]
+
+		if item.Link {
+			continue
+		}
+
 		namePkg := strings.TrimPrefix(pkgPath, "node_modules/")
 		if strings.Contains(namePkg, "/node_modules/") {
 			parts := strings.Split(namePkg, "/node_modules/")
@@ -364,7 +420,7 @@ func (pm *PackageManager) InstallFromCache() error {
 		targetPath := path.Join(pm.extractedPath, namePkg)
 		exists := utils.FolderExists(targetPath)
 		if !exists {
-			packagesToInstall[pkgPath] = pm.packageLock.Packages[pkgPath]
+			packagesToInstall[pkgPath] = item
 		}
 	}
 
@@ -567,6 +623,14 @@ func (pm *PackageManager) Remove(pkg string, removeFromPackageJson bool) error {
 func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isProduction bool) error {
 	queue := make([]QueueItem, 0)
 
+	// Print workspace info if already discovered
+	if pm.workspaceRegistry != nil {
+		fmt.Printf("Discovered %d workspace packages\n", len(pm.workspaceRegistry.Packages))
+		for _, ws := range pm.workspaceRegistry.Packages {
+			fmt.Printf("  - %s@%s\n", ws.Name, ws.Version)
+		}
+	}
+
 	for name, version := range packageJson.GetDependencies() {
 		dep := packagejson.Dependency{Name: name, Version: version}
 
@@ -706,6 +770,54 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				actualName := item.Dep.ActualName
 				if actualName == "" {
 					actualName = item.Dep.Name
+				}
+
+				if pm.workspaceRegistry != nil {
+					if wsPkg, isWorkspace := pm.workspaceRegistry.GetWorkspacePackage(actualName); isWorkspace {
+						mapMutex.Lock()
+						packageResolved := "node_modules/" + item.Dep.Name
+
+						pckItem := packagejson.PackageItem{
+							Name:     item.Dep.Name,
+							Version:  wsPkg.Version,
+							Resolved: "file:" + wsPkg.Path,
+							Link:     true,
+						}
+						packageLock.Packages[packageResolved] = pckItem
+
+						if packageLock.Workspaces == nil {
+							packageLock.Workspaces = make(map[string]string)
+						}
+						packageLock.Workspaces[item.Dep.Name] = wsPkg.Version
+
+						if item.ParentName == "package.json" {
+							if item.IsDev {
+								packageLock.DevDependencies[item.Dep.Name] = wsPkg.Version
+							} else {
+								packageLock.Dependencies[item.Dep.Name] = wsPkg.Version
+							}
+						}
+
+						mapMutex.Unlock()
+
+						for depName, depVersion := range wsPkg.PackageJSON.GetDependencies() {
+							pkgItem := packageLock.Packages[packageResolved]
+							if pkgItem.Dependencies == nil {
+								pkgItem.Dependencies = make(map[string]string)
+							}
+							pkgItem.Dependencies[depName] = depVersion
+							packageLock.Packages[packageResolved] = pkgItem
+
+							subDep := packagejson.Dependency{Name: depName, Version: depVersion, ActualName: depName}
+							workChan <- QueueItem{
+								Dep:        subDep,
+								ParentName: packageResolved,
+								IsDev:      item.IsDev,
+							}
+						}
+
+						return
+					}
 				}
 
 				var version string

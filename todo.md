@@ -1,4 +1,5 @@
 [] - add version command
+[] - update bashs script to go version
 [] - update command
 [] - init command
 [] - prune command

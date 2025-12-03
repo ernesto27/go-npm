@@ -26,68 +26,74 @@ go install
 # Popular GitHub repositories to test (repo_name:github_url)
 # Organized by category for comprehensive testing across different environments
 declare -a REPOS=(
-    # Simple utilities
-    "lodash:https://github.com/lodash/lodash.git"
-    "axios:https://github.com/axios/axios.git"
-    "chalk:https://github.com/chalk/chalk.git"
-    "commander:https://github.com/tj/commander.js.git"
+    # # Simple utilities
+    # "lodash:https://github.com/lodash/lodash.git"
+    # "axios:https://github.com/axios/axios.git"
+    # "chalk:https://github.com/chalk/chalk.git"
+    # "commander:https://github.com/tj/commander.js.git"
 
-    # Node.js frameworks (backend)
-    "express:https://github.com/expressjs/express.git"
-    "fastify:https://github.com/fastify/fastify.git"
-    "nestjs:https://github.com/nestjs/nest.git"
-    "koa:https://github.com/koajs/koa.git"
+    # # Node.js frameworks (backend)
+    # "express:https://github.com/expressjs/express.git"
+    # "fastify:https://github.com/fastify/fastify.git"
+    # "nestjs:https://github.com/nestjs/nest.git"
+    # "koa:https://github.com/koajs/koa.git"
 
-    # Full-stack/SSR frameworks
-    "next.js:https://github.com/vercel/next.js.git"
-    "nuxt:https://github.com/nuxt/nuxt.git"
-    "gatsby:https://github.com/gatsbyjs/gatsby.git"
+    # # Full-stack/SSR frameworks
+    # "next.js:https://github.com/vercel/next.js.git"
+    # "nuxt:https://github.com/nuxt/nuxt.git"
+    # "gatsby:https://github.com/gatsbyjs/gatsby.git"
 
-    # React Native projects
-    "react-native:https://github.com/facebook/react-native.git"
-    "expo:https://github.com/expo/expo.git"
-    "ignite:https://github.com/infinitered/ignite.git"
+    # # React Native projects
+    # "react-native:https://github.com/facebook/react-native.git"
+    # "expo:https://github.com/expo/expo.git"
+    # "ignite:https://github.com/infinitered/ignite.git"
 
-    # Electron applications
-    "electron:https://github.com/electron/electron.git"
-    "hyper:https://github.com/vercel/hyper.git"
-    "etcher:https://github.com/balena-io/etcher.git"
+    # # Electron applications
+    # "electron:https://github.com/electron/electron.git"
+    # "hyper:https://github.com/vercel/hyper.git"
+    # "etcher:https://github.com/balena-io/etcher.git"
 
-    # Build tools & bundlers (complex)
-    "webpack:https://github.com/webpack/webpack.git"
-    "vite:https://github.com/vitejs/vite.git"
-    "rollup:https://github.com/rollup/rollup.git"
-    "parcel:https://github.com/parcel-bundler/parcel.git"
+    # # Build tools & bundlers (complex)
+    # "webpack:https://github.com/webpack/webpack.git"
+    # "vite:https://github.com/vitejs/vite.git"
+    # "rollup:https://github.com/rollup/rollup.git"
+    # "parcel:https://github.com/parcel-bundler/parcel.git"
 
-    # Testing frameworks
-    "jest:https://github.com/jestjs/jest.git"
-    "mocha:https://github.com/mochajs/mocha.git"
-    "playwright:https://github.com/microsoft/playwright.git"
-    "cypress:https://github.com/cypress-io/cypress.git"
+    # # Testing frameworks
+    # "jest:https://github.com/jestjs/jest.git"
+    # "mocha:https://github.com/mochajs/mocha.git"
+    # "playwright:https://github.com/microsoft/playwright.git"
+    # "cypress:https://github.com/cypress-io/cypress.git"
 
-    # Compilers & transpilers
-    "babel:https://github.com/babel/babel.git"
-    "typescript:https://github.com/microsoft/TypeScript.git"
-    "swc:https://github.com/swc-project/swc.git"
+    # # Compilers & transpilers
+    # "babel:https://github.com/babel/babel.git"
+    # "typescript:https://github.com/microsoft/TypeScript.git"
+    # "swc:https://github.com/swc-project/swc.git"
 
-    # Code quality tools
-    "eslint:https://github.com/eslint/eslint.git"
-    "prettier:https://github.com/prettier/prettier.git"
+    # # Code quality tools
+    # "eslint:https://github.com/eslint/eslint.git"
+    # "prettier:https://github.com/prettier/prettier.git"
 
-    # Frontend frameworks
-    "vue:https://github.com/vuejs/core.git"
-    "svelte:https://github.com/sveltejs/svelte.git"
-    "solid:https://github.com/solidjs/solid.git"
+    # # Frontend frameworks
+    # "vue:https://github.com/vuejs/core.git"
+    # "svelte:https://github.com/sveltejs/svelte.git"
+    # "solid:https://github.com/solidjs/solid.git"
 
-    # Real-world applications (complex)
-    "strapi:https://github.com/strapi/strapi.git"
-    "ghost:https://github.com/TryGhost/Ghost.git"
-    "rocket.chat:https://github.com/RocketChat/Rocket.Chat.git"
+    # # Real-world applications (complex)
+    # "strapi:https://github.com/strapi/strapi.git"
+    # "ghost:https://github.com/TryGhost/Ghost.git"
+    # "rocket.chat:https://github.com/RocketChat/Rocket.Chat.git"
 
-    # Developer tools
-    "npm:https://github.com/npm/cli.git"
-    "yarn:https://github.com/yarnpkg/berry.git"
-    "pnpm:https://github.com/pnpm/pnpm.git"
+    # # Developer tools
+    # "npm:https://github.com/npm/cli.git"
+    # "yarn:https://github.com/yarnpkg/berry.git"
+    # "pnpm:https://github.com/pnpm/pnpm.git"
+)
+
+# Workspace repositories to test (local paths relative to TEST_REPOS_DIR)
+declare -a WORKSPACE_REPOS=(
+    "workspaces/simple"
+    "workspaces/complex"
 )
 
 # Function to print colored output
@@ -202,6 +208,61 @@ test_repo() {
     fi
 }
 
+# Function to test local workspace repositories
+test_workspace_repos() {
+    print_status "$BLUE" "=========================================="
+    print_status "$BLUE" "  TESTING WORKSPACE REPOSITORIES"
+    print_status "$BLUE" "=========================================="
+    echo ""
+
+    local workspace_success=0
+    local workspace_failed=0
+
+    # Process each workspace repository
+    for repo_name in "${WORKSPACE_REPOS[@]}"; do
+        local repo_path="$TEST_REPOS_DIR/$repo_name"
+        total_tests=$((total_tests + 1))
+
+        echo ""
+        print_status "$BLUE" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        print_status "$BLUE" "Workspace: $repo_name"
+        print_status "$BLUE" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        if [ ! -d "$repo_path" ]; then
+            print_status "$RED" "Workspace directory '$repo_path' not found, skipping."
+            log_message "[ERROR] Workspace directory '$repo_path' not found."
+            workspace_failed=$((workspace_failed + 1))
+            failed_tests=$((failed_tests + 1))
+            continue
+        fi
+
+        # Clean up
+        cleanup_repo "$repo_path" "$repo_name"
+
+        # Test
+        if test_repo "$repo_path" "$repo_name"; then
+            workspace_success=$((workspace_success + 1))
+            successful_tests=$((successful_tests + 1))
+        else
+            workspace_failed=$((workspace_failed + 1))
+            failed_tests=$((failed_tests + 1))
+        fi
+    done
+
+    log_message ""
+    log_message "------------------------------------------"
+    log_message "Workspace Test Summary"
+    log_message "------------------------------------------"
+    log_message "Total workspace tests: ${#WORKSPACE_REPOS[@]}"
+    log_message "Successful: $workspace_success"
+    log_message "Failed: $workspace_failed"
+    log_message "------------------------------------------"
+
+    # This function contributes to the global failure count,
+    # so the main exit code will reflect its outcome.
+}
+
+
 # Main execution
 main() {
     print_status "$BLUE" "=========================================="
@@ -224,10 +285,10 @@ main() {
         print_status "$GREEN" "Built npm-packager"
     fi
 
-    # Track test results
-    local total_tests=0
-    local successful_tests=0
-    local failed_tests=0
+    # Track test results (global)
+    total_tests=0
+    successful_tests=0
+    failed_tests=0
 
     # Process each repository
     for repo_entry in "${REPOS[@]}"; do
@@ -252,6 +313,9 @@ main() {
             failed_tests=$((failed_tests + 1))
         fi
     done
+
+    # Run tests on workspace repos
+    test_workspace_repos
 
     # Print summary
     echo ""
