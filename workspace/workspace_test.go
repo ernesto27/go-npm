@@ -300,7 +300,116 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// Helper function to create a workspace package for testing
+func TestCreateSymlink(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) (nodeModulesDir, packageName, workspacePath string, registry *WorkspaceRegistry)
+		expectError bool
+		validate    func(t *testing.T, nodeModulesDir, packageName, workspacePath string)
+	}{
+		{
+			name: "Simple package symlink",
+			setupFunc: func(t *testing.T) (string, string, string, *WorkspaceRegistry) {
+				tmpDir := t.TempDir()
+				nodeModulesDir := filepath.Join(tmpDir, "node_modules")
+				require.NoError(t, os.MkdirAll(nodeModulesDir, 0755))
+
+				workspacePath := filepath.Join(tmpDir, "packages", "utils")
+				require.NoError(t, os.MkdirAll(workspacePath, 0755))
+
+				parser := packagejson.NewPackageJSONParser(nil)
+				registry := NewWorkspaceRegistry(tmpDir, parser)
+
+				return nodeModulesDir, "utils", workspacePath, registry
+			},
+			expectError: false,
+			validate: func(t *testing.T, nodeModulesDir, packageName, workspacePath string) {
+				linkPath := filepath.Join(nodeModulesDir, packageName)
+				info, err := os.Lstat(linkPath)
+				require.NoError(t, err)
+				assert.True(t, info.Mode()&os.ModeSymlink != 0, "should be a symlink")
+
+				target, err := os.Readlink(linkPath)
+				require.NoError(t, err)
+				absTarget, _ := filepath.Abs(filepath.Join(filepath.Dir(linkPath), target))
+				absWorkspace, _ := filepath.Abs(workspacePath)
+				assert.Equal(t, absWorkspace, absTarget)
+			},
+		},
+		{
+			name: "Scoped package symlink",
+			setupFunc: func(t *testing.T) (string, string, string, *WorkspaceRegistry) {
+				tmpDir := t.TempDir()
+				nodeModulesDir := filepath.Join(tmpDir, "node_modules")
+				require.NoError(t, os.MkdirAll(nodeModulesDir, 0755))
+
+				workspacePath := filepath.Join(tmpDir, "packages", "utils")
+				require.NoError(t, os.MkdirAll(workspacePath, 0755))
+
+				parser := packagejson.NewPackageJSONParser(nil)
+				registry := NewWorkspaceRegistry(tmpDir, parser)
+
+				return nodeModulesDir, "@workspace/utils", workspacePath, registry
+			},
+			expectError: false,
+			validate: func(t *testing.T, nodeModulesDir, packageName, workspacePath string) {
+				linkPath := filepath.Join(nodeModulesDir, packageName)
+				info, err := os.Lstat(linkPath)
+				require.NoError(t, err)
+				assert.True(t, info.Mode()&os.ModeSymlink != 0)
+
+				scopeDir := filepath.Join(nodeModulesDir, "@workspace")
+				scopeInfo, err := os.Stat(scopeDir)
+				require.NoError(t, err)
+				assert.True(t, scopeInfo.IsDir(), "scope directory should exist")
+			},
+		},
+		{
+			name: "Symlink already exists and correct",
+			setupFunc: func(t *testing.T) (string, string, string, *WorkspaceRegistry) {
+				tmpDir := t.TempDir()
+				nodeModulesDir := filepath.Join(tmpDir, "node_modules")
+				require.NoError(t, os.MkdirAll(nodeModulesDir, 0755))
+
+				workspacePath := filepath.Join(tmpDir, "packages", "utils")
+				require.NoError(t, os.MkdirAll(workspacePath, 0755))
+
+				parser := packagejson.NewPackageJSONParser(nil)
+				registry := NewWorkspaceRegistry(tmpDir, parser)
+
+				err := registry.CreateSymlink(nodeModulesDir, "utils", workspacePath)
+				require.NoError(t, err)
+
+				return nodeModulesDir, "utils", workspacePath, registry
+			},
+			expectError: false,
+			validate: func(t *testing.T, nodeModulesDir, packageName, workspacePath string) {
+				linkPath := filepath.Join(nodeModulesDir, packageName)
+				info, err := os.Lstat(linkPath)
+				require.NoError(t, err)
+				assert.True(t, info.Mode()&os.ModeSymlink != 0)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			nodeModulesDir, packageName, workspacePath, registry := tc.setupFunc(t)
+
+			err := registry.CreateSymlink(nodeModulesDir, packageName, workspacePath)
+
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				if tc.validate != nil {
+					tc.validate(t, nodeModulesDir, packageName, workspacePath)
+				}
+			}
+		})
+	}
+}
+
 func createWorkspacePackage(t *testing.T, rootDir, relativePath, name, version string) {
 	pkgPath := filepath.Join(rootDir, relativePath)
 	require.NoError(t, os.MkdirAll(pkgPath, 0755))

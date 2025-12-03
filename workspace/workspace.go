@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"npm-packager/packagejson"
 )
@@ -151,4 +153,36 @@ func (wr *WorkspaceRegistry) Validate() []error {
 	}
 
 	return errors
+}
+
+// CreateSymlink creates a symlink for a workspace package in node_modules
+func (wr *WorkspaceRegistry) CreateSymlink(nodeModulesDir, packageName, workspacePath string) error {
+	linkPath := filepath.Join(nodeModulesDir, packageName)
+
+	if strings.Contains(packageName, "/") {
+		scopeDir := filepath.Join(nodeModulesDir, filepath.Dir(packageName))
+		if err := os.MkdirAll(scopeDir, 0755); err != nil {
+			return fmt.Errorf("failed to create scope directory: %w", err)
+		}
+	}
+
+	relPath, err := filepath.Rel(filepath.Dir(linkPath), workspacePath)
+	if err != nil {
+		return fmt.Errorf("failed to calculate relative path: %w", err)
+	}
+
+	if existingTarget, err := os.Readlink(linkPath); err == nil {
+		if existingTarget == relPath {
+			return nil
+		}
+		if err := os.Remove(linkPath); err != nil {
+			return fmt.Errorf("failed to remove existing link: %w", err)
+		}
+	}
+
+	if err := os.Symlink(relPath, linkPath); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	return nil
 }

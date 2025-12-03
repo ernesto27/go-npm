@@ -71,6 +71,40 @@ func (p *PackageJSON) GetPeerDependencies() map[string]string {
 	return extractDependencyMap(p.PeerDependencies)
 }
 
+// GetWorkspaces extracts workspace patterns from package.json
+// Supports both array format: ["packages/*"] and object format: {"packages": ["packages/*"]}
+func (p *PackageJSON) GetWorkspaces() []string {
+	if p.Workspaces == nil {
+		return []string{}
+	}
+
+	// Handle array format: ["packages/*"]
+	if patterns, ok := p.Workspaces.([]any); ok {
+		result := make([]string, 0, len(patterns))
+		for _, pattern := range patterns {
+			if str, ok := pattern.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	}
+
+	// Handle object format: {"packages": ["packages/*"]}
+	if obj, ok := p.Workspaces.(map[string]any); ok {
+		if packages, ok := obj["packages"].([]any); ok {
+			result := make([]string, 0, len(packages))
+			for _, pattern := range packages {
+				if str, ok := pattern.(string); ok {
+					result = append(result, str)
+				}
+			}
+			return result
+		}
+	}
+
+	return []string{}
+}
+
 func extractDependencyMap(deps any) map[string]string {
 	if deps == nil {
 		return make(map[string]string)
