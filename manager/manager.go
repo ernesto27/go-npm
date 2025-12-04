@@ -92,6 +92,14 @@ type QueueItem struct {
 	IsPeerOptional bool
 }
 
+// generateUniqueTarballName creates a unique tarball filename to avoid collisions
+// between scoped and non-scoped packages with the same base name.
+// Example: @jest/expect and expect both produce expect-30.2.0.tgz without this
+func generateUniqueTarballName(packageName, version string) string {
+	safeName := strings.ReplaceAll(packageName, "/", "-")
+	return safeName + "-" + version + ".tgz"
+}
+
 // parseAliasVersion detects npm package aliases in the format "npm:package@version"
 // Returns: actualPackage, version, isAlias
 func parseAliasVersion(version string) (string, string, bool) {
@@ -453,7 +461,7 @@ func (pm *PackageManager) InstallFromCache() error {
 
 				// Check if this is a git URL and convert to tarball URL if needed
 				downloadURL := item.Resolved
-				tarballFilename := path.Base(item.Resolved)
+				tarballFilename := generateUniqueTarballName(pkgName, item.Version)
 
 				if tarballURL, filename, isGit := convertGitURLToTarball(item.Resolved); isGit {
 					downloadURL = tarballURL
@@ -482,7 +490,7 @@ func (pm *PackageManager) InstallFromCache() error {
 				}
 
 				if shouldDownload {
-					err := pm.tarball.Download(downloadURL)
+					err := pm.tarball.DownloadAs(downloadURL, tarballFilename)
 					if err != nil {
 						tarballLock.Unlock()
 						errChan <- err
@@ -941,9 +949,13 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 
 				var packageResolved string
-				var shouldDownload bool
 
 				mapMutex.Lock()
+				// Check if this exact package@version has already been processed or is being processed
+				if processingPkgs[packageKey] {
+					mapMutex.Unlock()
+					return
+				}
 				if existingPkg, ok := packagesVersion[item.Dep.Name]; ok {
 					if existingPkg.Dep.Version != version {
 						fmt.Println("Package Repeated:", item.Dep.Name)
@@ -956,12 +968,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							packageResolved = item.ParentName + "/node_modules/" + item.Dep.Name
 						}
 
-						if _, processed := processingPkgs[packageKey]; processed {
-							shouldDownload = false
-						} else {
-							processingPkgs[packageKey] = true
-							shouldDownload = true
-						}
+						processingPkgs[packageKey] = true
 					} else {
 						mapMutex.Unlock()
 						return
@@ -973,12 +980,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						ParentName: item.ParentName,
 					}
 
-					if _, processed := processingPkgs[packageKey]; processed {
-						shouldDownload = false
-					} else {
-						processingPkgs[packageKey] = true
-						shouldDownload = true
-					}
+					processingPkgs[packageKey] = true
 				}
 				mapMutex.Unlock()
 
@@ -995,38 +997,40 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					resolvedURL = tarballURL
 				}
 
-				if shouldDownload && !utils.FolderExists(configPackageVersion) {
+				uniqueTarballName := generateUniqueTarballName(actualName, version)
+
+				// Lock based on package@version to prevent concurrent processing of the same package
+				pm.downloadMu.Lock()
+				packageLock_, exists := pm.downloadLocks[packageKey]
+				if !exists {
+					packageLock_ = &sync.Mutex{}
+					pm.downloadLocks[packageKey] = packageLock_
+				}
+				pm.downloadMu.Unlock()
+
+				packageLock_.Lock()
+				defer packageLock_.Unlock()
+
+				// Check again if folder exists after acquiring lock
+				if !utils.FolderExists(configPackageVersion) {
 					if tarballURL == "" || version == "" {
 						fmt.Printf("Skipping download for %s - invalid URL or empty version\n", item.Dep.Name)
 						return
 					}
 
-					// Lock based on tarball filename to prevent concurrent downloads of the same tarball
-					tarballFilename := path.Base(tarballURL)
-
-					pm.downloadMu.Lock()
-					tarballLock, exists := pm.downloadLocks[tarballFilename]
-					if !exists {
-						tarballLock = &sync.Mutex{}
-						pm.downloadLocks[tarballFilename] = tarballLock
-					}
-					pm.downloadMu.Unlock()
-
-					tarballLock.Lock()
-					tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
+					tarballPath := filepath.Join(pm.tarball.TarballPath, uniqueTarballName)
 
 					// Validate tarball (checks existence and integrity)
-					shouldDownload := true
+					shouldDownloadTarball := true
 					if utils.ValidateTarball(tarballPath) {
-						shouldDownload = false
+						shouldDownloadTarball = false
 					} else {
 						os.Remove(tarballPath)
 					}
 
-					if shouldDownload {
-						err = pm.tarball.Download(tarballURL)
+					if shouldDownloadTarball {
+						err = pm.tarball.DownloadAs(tarballURL, uniqueTarballName)
 						if err != nil {
-							tarballLock.Unlock()
 							if item.IsOptional || item.IsPeerOptional {
 								fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
 								return
@@ -1042,8 +1046,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 					// Extract tarball (extractor strips first dir component for both npm and GitHub)
 					err = pm.extractor.Extract(tarballPath, configPackageVersion)
-					tarballLock.Unlock()
-
 					if err != nil {
 						if item.IsOptional || item.IsPeerOptional {
 							fmt.Printf("Warning: Optional dependency %s failed to extract: %v\n", item.Dep.Name, err)
@@ -1188,7 +1190,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						IsPeerOptional: isPeerOptional,
 					}
 				}
-					mapMutex.Unlock()
+				mapMutex.Unlock()
 			}(item)
 		default:
 			workerMutex.Lock()

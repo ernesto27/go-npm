@@ -1,5 +1,6 @@
 [] - add version command
 [] - update bashs script to go version
+[] - remove cache , alsho should remove files in temp folder
 [] - update command
 [] - init command
 [] - prune command
