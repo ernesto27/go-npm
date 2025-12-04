@@ -806,8 +806,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							}
 						}
 
-						mapMutex.Unlock()
-
 						for depName, depVersion := range wsPkg.PackageJSON.GetDependencies() {
 							pkgItem := packageLock.Packages[packageResolved]
 							if pkgItem.Dependencies == nil {
@@ -823,6 +821,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 								IsDev:      item.IsDev,
 							}
 						}
+
+						mapMutex.Unlock()
 
 						return
 					}
