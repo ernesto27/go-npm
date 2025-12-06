@@ -2,27 +2,48 @@
 
 # Intro
 
-This tutorial is about creating an npm package manager clone using Go.
-We start from scratch with a basic implementation in which we can run an install command like "go run . i" and run a simple express server.
-This first version will be a starting point and functional for simple projects but does not have all the features that npm has (lock file, cache optimizations, global installations, etc), but besides that, it is a good starting point to understand how this works and to get a first glance of system programming in general.
+Hi, this tutorial is about creating an npm package manager clone using Go.
 
-![demo](code/demo.gif)
+We start from scratch with a basic implementation in which we can run an install command like "go run . i" and start a simple express server.
+This first version will be a starting point and functional for simple projects but does not have all the features that npm has (lock file, cache optimizations, global installations, etc), but besides that, it is a good starting point to understand how this works and to get a first glance of system programming.
 
-Before starting, it is necessary to know at least in the base form the current status of different JS/Node package managers.
+## Demo
 
-Here are the streamlined definitions for your tutorial:
+![demo](demo.gif)
+
+Download code from tutorial here
+
+https://drive.google.com/file/d/1r3DHq1a6poGcPl8BXwAyXIW8_0YoyNGT/view?usp=sharing
+
+
+
+Before starting, it is necessary to know the current status of different JS/Node package managers.
+
 
 ### npm (Node Package Manager)
-The default package manager bundled with Node.js. It manages dependencies in a flat node_modules structure and connects to the world's largest software registry. It is the industry standard for zero-configuration setups.
+The default package manager bundled with Node.js. It manages dependencies in a flat node_modules structure. It is the industry standard for zero-configuration setups.
 
-### Yarn (Yet Another Resource Negotiator)
+https://nodejs.org/en/learn/getting-started/an-introduction-to-the-npm-package-manager
+
+
+### yarn (Yet Another Resource Negotiator)
 Developed by Meta to improve upon npm's early performance. It utilizes parallel downloads for faster installation and is widely favored for its "Workspaces" feature, which simplifies managing multiple projects (monorepos).
+
+https://yarnpkg.com/
+
 
 ### pnpm (Performant npm)
 Designed for maximum disk efficiency. Instead of copying files for every project, it saves a single copy in a global store and links to them via symlinks. This drastically reduces disk usage and speeds up installation.
 
-### Bun
+https://pnpm.io/es/
+
+
+### bun
 An ultra-fast, all-in-one JavaScript runtime and package manager written in Zig. It aims to replace the entire modern toolchain by acting as your runtime, bundler, test runner, and package manager simultaneously.
+
+https://bun.com/
+
+
 
 Although all of these projects use different languages and were created in different contexts and times, all share the same final goal, that is to download and install packages in a node_modules folder to be used in a front or backend project.
 
@@ -30,8 +51,7 @@ Although all of these projects use different languages and were created in diffe
 We will create a base and solid design structure to build upon it in future versions, also with testing to ensure that our code is working as expected. 
 
 
-# Table of contents
-- [Intro](#intro)
+# Table of content
 - [How npm install works](#how-npm-install-works)
 - [Setup project](#setup-project)
 - [Config component](#config-component)
@@ -47,30 +67,31 @@ We will create a base and solid design structure to build upon it in future vers
 # How npm install works 
 
 Before starting the project we need to understand how the command npm install works in detail,  what components are involved and how they interact with each other.
+
 This is a base diagram, we will start simple and not think at moment about cache and performance optimizations.
 
 ![npm install diagram](diagram.jpg)
 
 
-1. **npm install**
+1. **npm install**:
    call the command to install packages.
 
-2. **Parse package.json**
+2. **Parse package.json file**:
    npm reads your project’s package.json to know which packages need to install.
 
-3. **Download manifest**
+3. **Download manifest**:
    npm go to the registry url of the packages and downloads the manifest file that contain all the versions and metadata of the package.
 
-4. **Download tarball**
+4. **Download tarball**:
    npm downloads the actual package file (a .tgz archive),  obtained from the manifest file.
 
-5. **Extract tarball**
+5. **Extract tarball**:
    npm unpacks the .tgz file into user machine.
 
-6. **Copy package to node_modules**
+6. **Copy package to node_modules**:
    npm moves the unpacked package into your project's node_modules folder so it can be used.
 
-This is a simple overview of the process,  like said before npm or other packages have optimizations and tricks to make things a lot faster.
+This is a simple overview of the process,  like said before npm and other packages managers have optimizations and tricks even for specific OS to make things a lot faster.
 
 
 # Setup project
@@ -153,7 +174,7 @@ func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 ```
-Here we created the root command for our NPM clone and define some descriptions, 
+Here we created the root command for our NPM clone and define some text to show in terminal, 
 Execute is the function that is called in main.go and start the cobra init,  if error happens show message and exit the app.
 
 init is a special function in go that is called when the package is used, here we disable the default completion command that cobra add by default.
@@ -193,7 +214,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 ```
-in this file we create a cobra command for install ,  this have and alias i to be used with "install" and with "i", 
+in this file we create a cobra command for install ,  this have and alias i that allow to call the command with "install" or "i".
 
 RunE is the definition of the function to execute when this command is called,  for now just print a message,
 
@@ -208,7 +229,7 @@ go run . i
 Starting installation process..
 ```
 
-Some nice features that have cobra by default is the use of command -h that show the availabe commands and descriptions
+Some nice features that have cobra by default is the use of command -h (help) that show the availabe commands and descriptions
 
 
 ```bash
@@ -300,7 +321,7 @@ func New() (*Config, error) {
 
 ```
 
-We define a `Config` struct to hold all the configuration paths and URLs needed for the application.
+We define a `Config` struct to hold all the configuration paths and URLs needed for the app.
 
 - **Config Struct**:
     - `NpmRegistryURL`: The base URL for the npm registry (e.g., `https://registry.npmjs.org/`).
@@ -330,7 +351,7 @@ The structure created on your disk will look like this:
        └── tarball
 
 ```
-in later sections we will go in detail about each folder purpose.
+> In this tutorial we are not going to use all folders created in .config folder, but is a good idea to have this ready for next tutorial.
 
 
 # Packagejson component
@@ -355,7 +376,7 @@ Let create a package.json file with this content in root of project.
 }
 ```
 
-this is basic package.json for a node server that define a express dependency
+this is basic package.json for a node server that define a express dependency and will be use for test app.
 
 
 For test server add this in root project
@@ -479,8 +500,8 @@ We define the `PackageJSON` struct to map the standard `package.json` fields. Wh
 
 
 ### Testing the parser
-One of the most important things is this kind of project is make tests at start of the project, this is critical when add new features of make fix to check that 
-all is working.
+One of the most important things in this kind of project is create tests at beginnig of the project, this is critical when add new features or refactor to check that 
+all is working as expected.
 
 
 run this
@@ -629,8 +650,8 @@ we have a setupFile file function that create the context and files for each tes
 - Non-existent file: We don't create a file at all. We expect an error.
 - Invalid JSON: We create a file with broken JSON (like a missing bracket). We expect an error. 
 
-After we loop through each test case,  change to the temp dir created for the test case, this is important for not create files in our current working dir, 
-and run tests in and isolated folder that does not affect our repo,  also we use the testify library to make assertions easier.
+After we loop through each test case,  change to the /tmp dir created for the test case, this is important for not create files in our current working dir, 
+and run tests in and isolated folder that does not affect our current directory,  also we use the testify library to make assertions easier.
 
 Run test  
 
@@ -969,7 +990,7 @@ func CreateDir(dirPath string) error {
         - Checks if the directory already exists.
         - If not, creates it with `0755` permissions (rwxr-xr-x).
 
-Ok, we have the base code to check if we can download a manifest file from npm,  to do that update the install command
+We have the base code to check if we can download a manifest file from npm,  to do that update the install command
 
 *cmd/install.go*
 ```go
@@ -1099,10 +1120,10 @@ In this test we add two test cases
 - Download express manifest: we expect to download the manifest file correctly and check that the file exist
 - Error with invalid package name: we expect an error when try to download a manifest for a non existent package
 
-We also add a function call setupTestDirs, this is very important because this make that tests  run in /temp directory and prevent a conflict  
+Like in previous tests we run that in /temp directory to prevent a conflict  
 with path ~/.config/go-npm/manifest, that is used by when run install command.
 
-Also note that use the real npm registry url here,  another option is to use a mock library to prevent go to internet, but for simplicity and also to test real world context, we prefer to go in this way.
+Also note that use the real npm registry url here,  another option is to use a mock library to prevent to make a network call, but for simplicity and also to test real world context, we prefer to go in this way.
 
 Run with 
 
@@ -1380,7 +1401,7 @@ func (v *VersionInfo) GetVersion(version string, npmPackage *NPMPackage) string 
 *version/version_test.go*
 
 ```go
-package manager
+package version
 
 import (
 	"testing"
@@ -1443,7 +1464,7 @@ func TestVersionInfo_getVersion(t *testing.T) {
 ```
 In this file we define a set of unit tests for the GetVersion method, covering a wide range of scenarios and edge cases.
 
-> Full test are found in zip download file
+> Full test are found in zip download filepackage manager 
 
 Run test 
 ```bash
@@ -1972,13 +1993,10 @@ cat node_modules/express/package.json | grep version
 Output: 
 "version": "4.21.2",
 
-This is great achievement,  but if we execute 
-
-
 
 Like always add test for extractor.go
 
-extractor/extractor_test.go
+*extractor/extractor_test.go*
 
 ```go
 package extractor
@@ -2195,7 +2213,7 @@ cd manager
 touch manager.go
 ```
 
-manager/manager.go
+*manager/manager.go*
 
 ```go
 package manager
@@ -2327,6 +2345,9 @@ func (m *Manager) Install() error {
             - Parses the `package.json` of the *newly installed* package.
             - Adds its dependencies to the queue if they haven't been installed yet.
         9.  **Mark Complete**: Adds the package name to the `installed` map.
+
+
+![demo](manager.png)
 
 This will install the root dependencies and all child dependencies recursively,  so we can update install command to test.
 
