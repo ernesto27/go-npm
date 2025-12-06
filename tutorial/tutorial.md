@@ -9,7 +9,7 @@ This first version will be a starting point and functional for simple projects b
 
 ## Demo
 
-![demo](demo.gif)
+![demo](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/demo.gif)
 
 Download code from tutorial here
 
@@ -70,7 +70,7 @@ Before starting the project we need to understand how the command npm install wo
 
 This is a base diagram, we will start simple and not think at moment about cache and performance optimizations.
 
-![npm install diagram](diagram.jpg)
+![npm install diagram](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/diagram.jpg)
 
 
 1. **npm install**:
@@ -411,7 +411,7 @@ This is nodejs code that setup and initialize a express server and two endpoints
 
 Now if we run command `node index.js` we will get this error
 
-![alt text](image.png)
+![alt text](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/image.png)
 
 This is expected because node_modeules folder does not exists 
 
@@ -2347,7 +2347,7 @@ func (m *Manager) Install() error {
         9.  **Mark Complete**: Adds the package name to the `installed` map.
 
 
-![demo](manager.png)
+![demo](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/manager.png)
 
 This will install the root dependencies and all child dependencies recursively,  so we can update install command to test.
 
@@ -2385,7 +2385,7 @@ You should see all dependencies installed in node_modules folder.
 ls node_modules
 ```
 
-![alt text](image-1.png)
+![alt text](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/image-1.png)
 
 And express server 
 
