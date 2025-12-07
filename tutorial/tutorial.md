@@ -1,5 +1,9 @@
 # TUTORIAL  
 
+![demo](https://raw.githubusercontent.com/ernesto27/go-npm/main/tutorial/go-npm.png)
+
+
+
 # Intro
 
 Hi, this tutorial is about creating an npm package manager clone using Go.
@@ -52,16 +56,15 @@ We will create a base and solid design structure to build upon it in future vers
 
 
 # Table of content
-- [How npm install works](#how-npm-install-works)
-- [Setup project](#setup-project)
-- [Config component](#config-component)
-- [Packagejson component](#packagejson-component)
-- [Manifest component](#manifest-component)
-- [Version component](#version-component)
-- [Tarball Component](#tarball-component)
-- [Extractor component](#extractor-component)
-- [Manager component](#manager-component)
-- [Conclusion](#conclusion)
+- How npm install works
+- Setup project
+- Config component
+- Packagejson component
+- Manifest component
+- Version component
+- Tarball Component
+- Extractor component
+- Manager component
 
 
 # How npm install works 
