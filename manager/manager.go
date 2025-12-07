@@ -469,42 +469,48 @@ func (pm *PackageManager) InstallFromCache() error {
 					fmt.Printf("Converting git URL to tarball for %s\n", pkgName)
 				}
 
-				// Lock based on tarball filename to prevent concurrent downloads of the same tarball
+				// Lock based on package@version to prevent concurrent extractions to the same directory
+				// Use the same locking key as fetchToCache to prevent race conditions
+				packageKey := pkgName + "@" + item.Version
 				pm.downloadMu.Lock()
-				tarballLock, exists := pm.downloadLocks[tarballFilename]
+				packageLock_, exists := pm.downloadLocks[packageKey]
 				if !exists {
-					tarballLock = &sync.Mutex{}
-					pm.downloadLocks[tarballFilename] = tarballLock
+					packageLock_ = &sync.Mutex{}
+					pm.downloadLocks[packageKey] = packageLock_
 				}
 				pm.downloadMu.Unlock()
 
-				tarballLock.Lock()
-				tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
+				packageLock_.Lock()
 
-				// Validate tarball (checks existence and integrity)
-				shouldDownload := true
-				if utils.ValidateTarball(tarballPath) {
-					shouldDownload = false
-				} else {
-					os.Remove(tarballPath)
-				}
+				// Double-check folder existence after acquiring lock
+				if !utils.FolderExists(pathPkg) {
+					tarballPath := filepath.Join(pm.tarball.TarballPath, tarballFilename)
 
-				if shouldDownload {
-					err := pm.tarball.DownloadAs(downloadURL, tarballFilename)
+					// Validate tarball (checks existence and integrity)
+					shouldDownload := true
+					if utils.ValidateTarball(tarballPath) {
+						shouldDownload = false
+					} else {
+						os.Remove(tarballPath)
+					}
+
+					if shouldDownload {
+						err := pm.tarball.DownloadAs(downloadURL, tarballFilename)
+						if err != nil {
+							packageLock_.Unlock()
+							errChan <- err
+							return
+						}
+					}
+
+					err := pm.extractor.Extract(tarballPath, pathPkg)
 					if err != nil {
-						tarballLock.Unlock()
+						packageLock_.Unlock()
 						errChan <- err
 						return
 					}
 				}
-
-				err := pm.extractor.Extract(tarballPath, pathPkg)
-				tarballLock.Unlock()
-
-				if err != nil {
-					errChan <- err
-					return
-				}
+				packageLock_.Unlock()
 			}
 
 			targetPath := path.Join(pm.extractedPath, namePkg)
@@ -806,8 +812,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							}
 						}
 
-						mapMutex.Unlock()
-
 						for depName, depVersion := range wsPkg.PackageJSON.GetDependencies() {
 							pkgItem := packageLock.Packages[packageResolved]
 							if pkgItem.Dependencies == nil {
@@ -823,6 +827,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 								IsDev:      item.IsDev,
 							}
 						}
+
+						mapMutex.Unlock()
 
 						return
 					}

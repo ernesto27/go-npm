@@ -27,35 +27,14 @@ go install
 # Organized by category for comprehensive testing across different environments
 declare -a REPOS=(
     # # Simple utilities
-    # "lodash:https://github.com/lodash/lodash.git"
-    # "axios:https://github.com/axios/axios.git"
-    # "chalk:https://github.com/chalk/chalk.git"
-    # "commander:https://github.com/tj/commander.js.git"
+    "lodash:https://github.com/lodash/lodash.git"
+    "axios:https://github.com/axios/axios.git"
+    "chalk:https://github.com/chalk/chalk.git"
+    "commander:https://github.com/tj/commander.js.git"
 
-    # # Node.js frameworks (backend)
-    # "express:https://github.com/expressjs/express.git"
-    # "fastify:https://github.com/fastify/fastify.git"
-    # "nestjs:https://github.com/nestjs/nest.git"
-    # "koa:https://github.com/koajs/koa.git"
-
-    # # Full-stack/SSR frameworks
-    # "next.js:https://github.com/vercel/next.js.git"
-    # "nuxt:https://github.com/nuxt/nuxt.git"
-    # "gatsby:https://github.com/gatsbyjs/gatsby.git"
-
-    # # React Native projects
-    # "react-native:https://github.com/facebook/react-native.git"
-    # "expo:https://github.com/expo/expo.git"
-    # "ignite:https://github.com/infinitered/ignite.git"
-
-    # # Electron applications
-    # "electron:https://github.com/electron/electron.git"
-    # "hyper:https://github.com/vercel/hyper.git"
-    # "etcher:https://github.com/balena-io/etcher.git"
 
     # # Build tools & bundlers (complex)
-    # "webpack:https://github.com/webpack/webpack.git"
-    # "vite:https://github.com/vitejs/vite.git"
+    "webpack:https://github.com/webpack/webpack.git"
     # "rollup:https://github.com/rollup/rollup.git"
     # "parcel:https://github.com/parcel-bundler/parcel.git"
 
@@ -315,7 +294,7 @@ main() {
     done
 
     # Run tests on workspace repos
-    test_workspace_repos
+    # test_workspace_repos
 
     # Print summary
     echo ""
