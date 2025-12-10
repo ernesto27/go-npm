@@ -19,6 +19,11 @@
     {
       "name": "rollup",
       "url": "https://github.com/rollup/rollup.git"
+    },
+    {
+      "name": "ghost",
+      "url": "https://github.com/TryGhost/Ghost.git"
+
     }
   ]
 }

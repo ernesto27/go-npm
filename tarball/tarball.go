@@ -2,7 +2,6 @@ package tarball
 
 import (
 	"npm-packager/utils"
-	"os"
 	"path"
 	"path/filepath"
 )
@@ -11,8 +10,7 @@ type Tarball struct {
 	TarballPath string
 }
 
-func NewTarball() *Tarball {
-	tarballPath := os.TempDir()
+func NewTarball(tarballPath string) *Tarball {
 	return &Tarball{TarballPath: tarballPath}
 }
 

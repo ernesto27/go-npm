@@ -41,7 +41,7 @@ func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 		Config:            cfg,
 		Manifest:          manifestInst,
 		Etag:              etagInst,
-		Tarball:           tarball.NewTarball(),
+		Tarball:           tarball.NewTarball(cfg.TarballDir),
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
 		ParseJsonManifest: newParseJsonManifest(),

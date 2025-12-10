@@ -179,7 +179,7 @@ func BuildDependencies() (*Dependencies, error) {
 		Config:            cfg,
 		Manifest:          manifest,
 		Etag:              etag,
-		Tarball:           tarball.NewTarball(),
+		Tarball:           tarball.NewTarball(cfg.TarballDir),
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
 		ParseJsonManifest: newParseJsonManifest(),
@@ -190,15 +190,6 @@ func BuildDependencies() (*Dependencies, error) {
 }
 
 func New(deps *Dependencies) (*PackageManager, error) {
-	// Create base directories
-	if err := utils.CreateDir(deps.Config.BaseDir); err != nil {
-		return nil, err
-	}
-
-	if err := utils.CreateDir(deps.Config.PackagesDir); err != nil {
-		return nil, err
-	}
-
 	return &PackageManager{
 		dependencies:      make(map[string]string),
 		extractedPath:     deps.Config.LocalNodeModules,

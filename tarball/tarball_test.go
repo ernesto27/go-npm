@@ -54,7 +54,8 @@ func TestDownloadTarball_Download(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			url := tc.setupFunc(t)
-			tarball := NewTarball()
+			tarballPath := t.TempDir()
+			tarball := NewTarball(tarballPath)
 			err := tarball.Download(url)
 
 			if tc.expectError {

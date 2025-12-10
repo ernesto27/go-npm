@@ -34,7 +34,7 @@ func New() (*Config, error) {
 	baseDir := filepath.Join(homeDir, ".config", "go-npm")
 	globalDir := filepath.Join(baseDir, "global")
 
-	return &Config{
+	cfg := &Config{
 		BaseDir:     baseDir,
 		ManifestDir: filepath.Join(baseDir, "manifest"),
 		TarballDir:  filepath.Join(baseDir, "tarball"),
@@ -48,7 +48,31 @@ func New() (*Config, error) {
 		GlobalBinDir:      filepath.Join(globalDir, "bin"),
 		GlobalPackageJSON: filepath.Join(globalDir, "package.json"),
 		GlobalLockFile:    filepath.Join(globalDir, "go-package-lock.json"),
-	}, nil
+	}
+
+	if err := cfg.EnsureDirectories(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func (c *Config) EnsureDirectories() error {
+	dirs := []string{
+		c.BaseDir,
+		c.ManifestDir,
+		c.TarballDir,
+		c.PackagesDir,
+		filepath.Join(c.BaseDir, "etag"),
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	return nil
 }
 
 func (c *Config) ClearCache() error {
