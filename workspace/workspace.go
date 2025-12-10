@@ -66,6 +66,15 @@ func (wr *WorkspaceRegistry) expandGlobPatterns(patterns []string) ([]string, er
 		}
 
 		for _, match := range matches {
+			// Check if match is a directory
+			info, err := os.Stat(match)
+			if err != nil {
+				continue
+			}
+			if !info.IsDir() {
+				continue
+			}
+
 			absMatch, err := filepath.Abs(match)
 			if err != nil {
 				continue

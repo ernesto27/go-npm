@@ -1,0 +1,24 @@
+{
+  "repositories": [
+    {
+      "name": "lodash",
+      "url": "https://github.com/lodash/lodash.git"
+    },
+    {
+      "name": "chalk",
+      "url": "https://github.com/chalk/chalk.git"
+    },
+    {
+      "name": "commander",
+      "url": "https://github.com/tj/commander.js.git"
+    },
+    {
+      "name": "webpack",
+      "url": "https://github.com/webpack/webpack.git"
+    },
+    {
+      "name": "rollup",
+      "url": "https://github.com/rollup/rollup.git"
+    }
+  ]
+}
