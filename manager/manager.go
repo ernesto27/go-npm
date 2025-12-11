@@ -128,18 +128,19 @@ func parseAliasVersion(version string) (string, string, bool) {
 // createDependency creates a packagejson.Dependency with proper ActualName and Version
 // by parsing GitHub dependencies (github:user/repo#ref) and npm aliases (npm:package@version)
 func createDependency(name, version string) packagejson.Dependency {
-	dep := packagejson.Dependency{Name: name, Version: version}
+	dep := packagejson.Dependency{Name: name}
 
 	// Check for GitHub dependency format: "github:user/repo#ref"
 	if _, isGitHub := parseGitHubDependency(version); isGitHub {
 		dep.ActualName = name
-		dep.Version = version // Keep the full GitHub spec
+		dep.Version = version
 	} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
-		// Check for npm alias format: "npm:actual-package@version"
+		// npm alias format: "npm:actual-package@version" - use the actual package name and parsed version
 		dep.ActualName = actualPkg
 		dep.Version = actualVersion
 	} else {
 		dep.ActualName = name
+		dep.Version = version
 	}
 
 	return dep
