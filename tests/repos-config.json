@@ -35,6 +35,10 @@
     {
       "name": "typescipit",
       "url": "https://github.com/microsoft/TypeScript"
+    },
+    {
+      "name": "fastify",
+      "url": "https://github.com/fastify/fastify"
     }
   ]
 }

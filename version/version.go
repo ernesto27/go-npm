@@ -1,9 +1,10 @@
 package version
 
 import (
-	"github.com/ernesto27/go-npm/manifest"
 	"sort"
 	"strings"
+
+	"github.com/ernesto27/go-npm/manifest"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -86,4 +87,28 @@ func (v *Info) GetVersion(version string, npmPackage *manifest.NPMPackage) strin
 
 	// Last resort: return the original format
 	return trimmedOriginal
+}
+
+// SatisfiesConstraint checks if a resolved version satisfies a version constraint
+// Returns true if the constraint is satisfied, false otherwise
+func (v *Info) SatisfiesConstraint(resolvedVersion, constraint string) bool {
+	// Handle empty constraint or "latest" - always satisfied
+	if constraint == "" || constraint == "latest" || constraint == "*" {
+		return true
+	}
+
+	// Parse the resolved version
+	semverVersion, err := semver.NewVersion(resolvedVersion)
+	if err != nil {
+		return false
+	}
+
+	// Parse the constraint
+	semverConstraint, err := semver.NewConstraint(constraint)
+	if err != nil {
+		// If constraint parsing fails, check exact match
+		return resolvedVersion == constraint
+	}
+
+	return semverConstraint.Check(semverVersion)
 }

@@ -3,6 +3,12 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"sync"
+
 	"github.com/ernesto27/go-npm/binlink"
 	"github.com/ernesto27/go-npm/config"
 	"github.com/ernesto27/go-npm/etag"
@@ -14,11 +20,6 @@ import (
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
 	"github.com/ernesto27/go-npm/workspace"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
-	"sync"
 )
 
 const npmRegistryURL = "https://registry.npmjs.org/"
@@ -946,6 +947,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 
 				var packageResolved string
+				var processingKey string
 
 				mapMutex.Lock()
 				// Check if this exact package@version has already been processed or is being processed
@@ -954,30 +956,49 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					return
 				}
 				if existingPkg, ok := packagesVersion[item.Dep.Name]; ok {
-					if existingPkg.Dep.Version != version {
-						fmt.Println("Package Repeated:", item.Dep.Name)
-						fmt.Println("Resolved version:", version)
+					// Check if the existing hoisted version satisfies the current constraint
+					// existingPkg.Dep.Version is the resolved version (e.g., "0.1.0")
+					// item.Dep.Version is the version constraint (e.g., "^0.3.0")
+					existingSatisfiesConstraint := pm.versionInfo.SatisfiesConstraint(existingPkg.Dep.Version, item.Dep.Version)
+
+					if !existingSatisfiesConstraint {
 						// ParentName is now the full resolved path (e.g., "node_modules/wrap-ansi")
 						// or "package.json" for top-level dependencies
 						if item.ParentName == "package.json" {
 							packageResolved = "node_modules/" + item.Dep.Name
+							processingKey = packageKey
 						} else {
 							packageResolved = item.ParentName + "/node_modules/" + item.Dep.Name
+							// Use a nested-specific key that includes the parent path
+							// This allows the same version to be nested under multiple parents
+							processingKey = packageResolved + "@" + version
 						}
 
-						processingPkgs[packageKey] = true
+						// Check if this specific nested location has already been processed
+						if processingPkgs[processingKey] {
+							mapMutex.Unlock()
+							return
+						}
+
+						fmt.Println("Package Repeated:", item.Dep.Name)
+						fmt.Println("Resolved version:", version)
+						fmt.Println("Existing version:", existingPkg.Dep.Version, "does not satisfy constraint:", item.Dep.Version)
+						fmt.Println("Installing nested at:", packageResolved)
+
+						processingPkgs[processingKey] = true
 					} else {
 						mapMutex.Unlock()
 						return
 					}
 				} else {
 					packageResolved = "node_modules/" + item.Dep.Name
+					processingKey = packageKey
 					packagesVersion[item.Dep.Name] = QueueItem{
 						Dep:        packagejson.Dependency{Name: item.Dep.Name, Version: version},
 						ParentName: item.ParentName,
 					}
 
-					processingPkgs[packageKey] = true
+					processingPkgs[processingKey] = true
 				}
 				mapMutex.Unlock()
 
