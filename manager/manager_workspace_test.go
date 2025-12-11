@@ -1,7 +1,7 @@
 package manager
 
 import (
-	"npm-packager/workspace"
+	"github.com/ernesto27/go-npm/workspace"
 	"os"
 	"path/filepath"
 	"testing"

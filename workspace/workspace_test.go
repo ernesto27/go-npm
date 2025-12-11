@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"npm-packager/packagejson"
+	"github.com/ernesto27/go-npm/packagejson"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

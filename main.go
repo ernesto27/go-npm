@@ -1,7 +1,7 @@
 package main
 
 import (
-	"npm-packager/cmd"
+	"github.com/ernesto27/go-npm/cmd"
 )
 
 func main() {

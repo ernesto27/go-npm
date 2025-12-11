@@ -2,7 +2,7 @@ package packagejson
 
 import (
 	"encoding/json"
-	"npm-packager/config"
+	"github.com/ernesto27/go-npm/config"
 	"os"
 	"path/filepath"
 	"testing"

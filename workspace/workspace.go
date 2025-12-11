@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"npm-packager/packagejson"
+	"github.com/ernesto27/go-npm/packagejson"
 )
 
 // Workspace represents a single workspace package in a monorepo
@@ -174,6 +174,11 @@ func (wr *WorkspaceRegistry) CreateSymlink(nodeModulesDir, packageName, workspac
 	absWorkspace, err := filepath.Abs(workspacePath)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path for workspace: %w", err)
+	}
+
+	// Ensure node_modules directory exists before creating symlinks
+	if err := os.MkdirAll(absNodeModules, 0755); err != nil {
+		return fmt.Errorf("failed to create node_modules directory: %w", err)
 	}
 
 	linkPath := filepath.Join(absNodeModules, packageName)

@@ -21,9 +21,20 @@
       "url": "https://github.com/rollup/rollup.git"
     },
     {
-      "name": "ghost",
-      "url": "https://github.com/TryGhost/Ghost.git"
-
+      "name": "eslint",
+      "url": "https://github.com/eslint/eslint"
+    },
+    {
+      "name": "express",
+      "url": "https://github.com/expressjs/express"
+    },
+    {
+      "name": "gatbsy",
+      "url": "https://github.com/gatsbyjs/gatsby"
+    },
+    {
+      "name": "typescipit",
+      "url": "https://github.com/microsoft/TypeScript"
     }
   ]
 }

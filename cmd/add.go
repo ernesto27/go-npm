@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"npm-packager/manager"
+	"github.com/ernesto27/go-npm/manager"
 	"time"
 
 	"github.com/spf13/cobra"

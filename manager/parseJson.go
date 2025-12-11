@@ -3,7 +3,7 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
-	"npm-packager/manifest"
+	"github.com/ernesto27/go-npm/manifest"
 	"os"
 )
 

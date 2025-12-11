@@ -1,4 +1,4 @@
-module npm-packager
+module github.com/ernesto27/go-npm
 
 go 1.25.1
 

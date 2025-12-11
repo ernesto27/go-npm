@@ -3,7 +3,7 @@ package packagejson
 import (
 	"encoding/json"
 	"fmt"
-	"npm-packager/config"
+	"github.com/ernesto27/go-npm/config"
 	"os"
 	"strings"
 

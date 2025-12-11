@@ -2,7 +2,7 @@ package etag
 
 import (
 	"encoding/json"
-	"npm-packager/packagejson"
+	"github.com/ernesto27/go-npm/packagejson"
 	"os"
 	"path/filepath"
 	"testing"

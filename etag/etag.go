@@ -3,8 +3,8 @@ package etag
 import (
 	"encoding/json"
 	"fmt"
-	"npm-packager/packagejson"
-	"npm-packager/utils"
+	"github.com/ernesto27/go-npm/packagejson"
+	"github.com/ernesto27/go-npm/utils"
 	"os"
 	"path/filepath"
 )

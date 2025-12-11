@@ -1,7 +1,7 @@
 package version
 
 import (
-	"npm-packager/manifest"
+	"github.com/ernesto27/go-npm/manifest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

@@ -1,7 +1,7 @@
 package tarball
 
 import (
-	"npm-packager/utils"
+	"github.com/ernesto27/go-npm/utils"
 	"path"
 	"path/filepath"
 )
