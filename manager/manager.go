@@ -125,6 +125,26 @@ func parseAliasVersion(version string) (string, string, bool) {
 	return actualPkg, actualVersion, true
 }
 
+// createDependency creates a packagejson.Dependency with proper ActualName and Version
+// by parsing GitHub dependencies (github:user/repo#ref) and npm aliases (npm:package@version)
+func createDependency(name, version string) packagejson.Dependency {
+	dep := packagejson.Dependency{Name: name, Version: version}
+
+	// Check for GitHub dependency format: "github:user/repo#ref"
+	if _, isGitHub := parseGitHubDependency(version); isGitHub {
+		dep.ActualName = name
+		dep.Version = version // Keep the full GitHub spec
+	} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
+		// Check for npm alias format: "npm:actual-package@version"
+		dep.ActualName = actualPkg
+		dep.Version = actualVersion
+	} else {
+		dep.ActualName = name
+	}
+
+	return dep
+}
+
 // GitHubDependency represents a parsed GitHub dependency
 type GitHubDependency struct {
 	Owner string
@@ -637,24 +657,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	}
 
 	for name, version := range packageJson.GetDependencies() {
-		dep := packagejson.Dependency{Name: name, Version: version}
-
-		// Check for GitHub dependency format: "github:user/repo#ref"
-		if _, isGitHub := parseGitHubDependency(version); isGitHub {
-			// Store the GitHub dependency info in the version field temporarily
-			// The actual name will be determined after extracting the package
-			dep.ActualName = name
-			dep.Version = version // Keep the full GitHub spec
-		} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
-			// Check for npm alias format: "npm:actual-package@version"
-			dep.ActualName = actualPkg
-			dep.Version = actualVersion
-		} else {
-			dep.ActualName = name
-		}
-
 		queue = append(queue, QueueItem{
-			Dep:        dep,
+			Dep:        createDependency(name, version),
 			ParentName: "package.json",
 			IsDev:      false,
 		})
@@ -662,22 +666,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 	if !isProduction {
 		for name, version := range packageJson.GetDevDependencies() {
-			dep := packagejson.Dependency{Name: name, Version: version}
-
-			// Check for GitHub dependency format: "github:user/repo#ref"
-			if _, isGitHub := parseGitHubDependency(version); isGitHub {
-				dep.ActualName = name
-				dep.Version = version
-			} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
-				// Check for npm alias format: "npm:actual-package@version"
-				dep.ActualName = actualPkg
-				dep.Version = actualVersion
-			} else {
-				dep.ActualName = name
-			}
-
 			queue = append(queue, QueueItem{
-				Dep:        dep,
+				Dep:        createDependency(name, version),
 				ParentName: "package.json",
 				IsDev:      true,
 			})
@@ -685,22 +675,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 	}
 
 	for name, version := range packageJson.GetOptionalDependencies() {
-		dep := packagejson.Dependency{Name: name, Version: version}
-
-		// Check for GitHub dependency format: "github:user/repo#ref"
-		if _, isGitHub := parseGitHubDependency(version); isGitHub {
-			dep.ActualName = name
-			dep.Version = version
-		} else if actualPkg, actualVersion, isAlias := parseAliasVersion(version); isAlias {
-			// Check for npm alias format: "npm:actual-package@version"
-			dep.ActualName = actualPkg
-			dep.Version = actualVersion
-		} else {
-			dep.ActualName = name
-		}
-
 		queue = append(queue, QueueItem{
-			Dep:        dep,
+			Dep:        createDependency(name, version),
 			ParentName: "package.json",
 			IsDev:      false,
 			IsOptional: true,
@@ -1110,17 +1086,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					pkgItem.Dependencies[name] = depVersion
 					packageLock.Packages[packageResolved] = pkgItem
 
-					// Check if sub-dependency is also an alias
-					subDep := packagejson.Dependency{Name: name, Version: depVersion}
-					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-						subDep.ActualName = actualPkg
-						subDep.Version = actualVersion
-					} else {
-						subDep.ActualName = name
-					}
-
 					workChan <- QueueItem{
-						Dep:        subDep,
+						Dep:        createDependency(name, depVersion),
 						ParentName: packageResolved,
 						IsDev:      item.IsDev,
 					}
@@ -1135,17 +1102,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					pkgItem.OptionalDependencies[name] = depVersion
 					packageLock.Packages[packageResolved] = pkgItem
 
-					// Check if sub-dependency is also an alias
-					subDep := packagejson.Dependency{Name: name, Version: depVersion}
-					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-						subDep.ActualName = actualPkg
-						subDep.Version = actualVersion
-					} else {
-						subDep.ActualName = name
-					}
-
 					workChan <- QueueItem{
-						Dep:        subDep,
+						Dep:        createDependency(name, depVersion),
 						ParentName: packageResolved,
 						IsDev:      false,
 						IsOptional: true,
@@ -1169,17 +1127,8 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						}
 					}
 
-					// Check if sub-dependency is also an alias
-					subDep := packagejson.Dependency{Name: name, Version: depVersion}
-					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
-						subDep.ActualName = actualPkg
-						subDep.Version = actualVersion
-					} else {
-						subDep.ActualName = name
-					}
-
 					workChan <- QueueItem{
-						Dep:            subDep,
+						Dep:            createDependency(name, depVersion),
 						ParentName:     packageResolved,
 						IsDev:          false,
 						IsOptional:     false,

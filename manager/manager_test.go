@@ -547,6 +547,76 @@ func TestParseAliasVersion(t *testing.T) {
 	}
 }
 
+func TestCreateDependency(t *testing.T) {
+	testCases := []struct {
+		name               string
+		depName            string
+		version            string
+		expectedName       string
+		expectedActualName string
+		expectedVersion    string
+	}{
+		{
+			name:               "regular dependency",
+			depName:            "lodash",
+			version:            "^4.17.21",
+			expectedName:       "lodash",
+			expectedActualName: "lodash",
+			expectedVersion:    "^4.17.21",
+		},
+		{
+			name:               "npm alias dependency",
+			depName:            "my-lodash",
+			version:            "npm:lodash@^4.17.21",
+			expectedName:       "my-lodash",
+			expectedActualName: "lodash",
+			expectedVersion:    "^4.17.21",
+		},
+		{
+			name:               "scoped package alias",
+			depName:            "babel-traverse",
+			version:            "npm:@babel/traverse@^7.25.3",
+			expectedName:       "babel-traverse",
+			expectedActualName: "@babel/traverse",
+			expectedVersion:    "^7.25.3",
+		},
+		{
+			name:               "GitHub dependency",
+			depName:            "my-package",
+			version:            "github:user/repo#v1.0.0",
+			expectedName:       "my-package",
+			expectedActualName: "my-package",
+			expectedVersion:    "github:user/repo#v1.0.0",
+		},
+		{
+			name:               "exact version",
+			depName:            "is-odd",
+			version:            "3.0.1",
+			expectedName:       "is-odd",
+			expectedActualName: "is-odd",
+			expectedVersion:    "3.0.1",
+		},
+		{
+			name:               "scoped package regular version",
+			depName:            "@babel/core",
+			version:            "^7.0.0",
+			expectedName:       "@babel/core",
+			expectedActualName: "@babel/core",
+			expectedVersion:    "^7.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dep := createDependency(tc.depName, tc.version)
+
+			assert.Equal(t, tc.expectedName, dep.Name, "Name should match")
+			assert.Equal(t, tc.expectedActualName, dep.ActualName, "ActualName should match")
+			assert.Equal(t, tc.expectedVersion, dep.Version, "Version should match")
+		})
+	}
+}
+
 func TestFetchToCache(t *testing.T) {
 	testCases := []struct {
 		name        string
