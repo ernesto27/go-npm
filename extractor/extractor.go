@@ -22,6 +22,28 @@ func NewTGZExtractor() *TGZExtractor {
 }
 
 func (e *TGZExtractor) Extract(srcPath, destPath string) error {
+	// Extract to temporary directory first for atomic operation
+	tempDest := destPath + ".tmp"
+
+	// Clean up any leftover temp directory from previous interrupted extraction
+	os.RemoveAll(tempDest)
+
+	// Perform extraction to temporary location
+	if err := e.extractToDirectory(srcPath, tempDest); err != nil {
+		os.RemoveAll(tempDest) // Clean up temp directory on failure
+		return err
+	}
+
+	// Atomic rename: only succeeds if extraction completed successfully
+	if err := os.Rename(tempDest, destPath); err != nil {
+		os.RemoveAll(tempDest)
+		return fmt.Errorf("failed to finalize extraction: %w", err)
+	}
+
+	return nil
+}
+
+func (e *TGZExtractor) extractToDirectory(srcPath, destPath string) error {
 	file, err := os.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", srcPath, err)

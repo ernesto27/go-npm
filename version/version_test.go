@@ -491,6 +491,15 @@ func TestInfo_GetVersion(t *testing.T) {
 			expected: "3.0.0",
 		},
 
+		// Regression tests
+		{
+			name:     "Caret ^7.0.0 should NOT match 8.x (wrap-ansi bug)",
+			version:  "^7.0.0",
+			versions: []string{"6.0.0", "7.0.0", "7.1.0", "8.0.0", "8.1.0"},
+			latest:   "8.1.0",
+			expected: "7.1.0", // Should be highest 7.x, NOT 8.x
+		},
+
 		// Edge cases
 		{
 			name:     "Package with only one version",
