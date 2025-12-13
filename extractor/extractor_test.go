@@ -16,7 +16,7 @@ func setupTestExtractorDirs(t *testing.T) (string, string) {
 	srcDir := filepath.Join(tmpDir, "src")
 	destDir := filepath.Join(tmpDir, "dest")
 	os.MkdirAll(srcDir, 0755)
-	os.MkdirAll(destDir, 0755)
+	// Don't create destDir - let the extractor create it
 	return srcDir, destDir
 }
 
@@ -133,15 +133,10 @@ func TestTGZExtractorExtract(t *testing.T) {
 
 				return tarballPath, destDir
 			},
-			expectError: false,
+			expectError: true,
 			validate: func(t *testing.T, destDir string, err error) {
-				assert.NoError(t, err)
-
-				indexPath := filepath.Join(destDir, "index.js")
-				assert.NoFileExists(t, indexPath, "Files without directory prefix should be skipped")
-
-				readmePath := filepath.Join(destDir, "README.md")
-				assert.NoFileExists(t, readmePath, "Files without directory prefix should be skipped")
+				assert.Error(t, err, "Should return error when no files are extracted")
+				assert.Contains(t, err.Error(), "failed to finalize extraction")
 			},
 		},
 		{
