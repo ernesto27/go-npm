@@ -912,7 +912,7 @@ func TestRemove(t *testing.T) {
 				err := os.WriteFile(packageJSONPath, []byte(packageJSONContent), 0644)
 				assert.NoError(t, err)
 
-				// Create go-package-lock.json (the custom lock file format)
+				// Create go-npm-lock.json (the custom lock file format)
 				packageLockContent := `{
   "name": "test-project",
   "version": "1.0.0",
@@ -948,7 +948,7 @@ func TestRemove(t *testing.T) {
     "is-even": "1.0.0"
   }
 }`
-				packageLockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				packageLockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				err = os.WriteFile(packageLockPath, []byte(packageLockContent), 0644)
 				assert.NoError(t, err)
 
@@ -1011,7 +1011,7 @@ func TestRemove(t *testing.T) {
 				err := os.WriteFile(packageJSONPath, []byte(packageJSONContent), 0644)
 				assert.NoError(t, err)
 
-				// Create go-package-lock.json (the custom lock file format)
+				// Create go-npm-lock.json (the custom lock file format)
 				packageLockContent := `{
   "name": "test-project",
   "version": "1.0.0",
@@ -1036,7 +1036,7 @@ func TestRemove(t *testing.T) {
     "is-odd": "3.0.1"
   }
 }`
-				packageLockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				packageLockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				err = os.WriteFile(packageLockPath, []byte(packageLockContent), 0644)
 				assert.NoError(t, err)
 
@@ -1143,7 +1143,7 @@ func TestAdd(t *testing.T) {
   "packages": {},
   "dependencies": {}
 }`
-				lockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				lockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				err = os.WriteFile(lockPath, []byte(lockContent), 0644)
 				assert.NoError(t, err)
 
@@ -1167,8 +1167,8 @@ func TestAdd(t *testing.T) {
 				assert.Contains(t, pm.packageLock.Dependencies, "is-odd")
 				assert.Equal(t, "3.0.1", pm.packageLock.Dependencies["is-odd"])
 
-				// Verify go-package-lock.json exists
-				lockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				// Verify go-npm-lock.json exists
+				lockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				assert.FileExists(t, lockPath, "lock file should exist")
 			},
 		},
@@ -1200,7 +1200,7 @@ func TestAdd(t *testing.T) {
   "packages": {},
   "dependencies": {}
 }`
-				lockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				lockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				err = os.WriteFile(lockPath, []byte(lockContent), 0644)
 				assert.NoError(t, err)
 
@@ -1295,7 +1295,7 @@ func TestAdd(t *testing.T) {
   "packages": {},
   "dependencies": {}
 }`
-				lockPath := filepath.Join(tmpDir, "go-package-lock.json")
+				lockPath := filepath.Join(tmpDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 				err = os.WriteFile(lockPath, []byte(lockContent), 0644)
 				assert.NoError(t, err)
 
@@ -1377,7 +1377,7 @@ func TestUninstallGlobal(t *testing.T) {
 				pm.config.GlobalDir = filepath.Join(tmpDir, ".go-npm-global")
 				pm.config.GlobalNodeModules = filepath.Join(pm.config.GlobalDir, "node_modules")
 				pm.config.GlobalBinDir = filepath.Join(pm.config.GlobalDir, "bin")
-				pm.config.GlobalLockFile = filepath.Join(pm.config.GlobalDir, "go-package-lock.json")
+				pm.config.GlobalLockFile = filepath.Join(pm.config.GlobalDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 
 				// Setup global mode
 				err = pm.SetupGlobal()
@@ -1435,7 +1435,7 @@ func TestUninstallGlobal(t *testing.T) {
 				pm.config.GlobalDir = filepath.Join(tmpDir, ".go-npm-global")
 				pm.config.GlobalNodeModules = filepath.Join(pm.config.GlobalDir, "node_modules")
 				pm.config.GlobalBinDir = filepath.Join(pm.config.GlobalDir, "bin")
-				pm.config.GlobalLockFile = filepath.Join(pm.config.GlobalDir, "go-package-lock.json")
+				pm.config.GlobalLockFile = filepath.Join(pm.config.GlobalDir, packagejson.LOCK_FILE_NAME_GO_NPM)
 
 				err = pm.SetupGlobal()
 				assert.NoError(t, err)

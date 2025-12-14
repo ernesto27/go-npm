@@ -3,12 +3,18 @@ package packagejson
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ernesto27/go-npm/config"
 	"os"
 	"strings"
 
+	"github.com/ernesto27/go-npm/config"
+
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+)
+
+const (
+	LOCK_FILE_NAME_GO_NPM = "go-npm-lock.json"
+	LOCK_FILE_NAME_NPM    = "package-lock.json"
 )
 
 type Dependency struct {
@@ -20,30 +26,30 @@ type Dependency struct {
 }
 
 type PackageJSON struct {
-	Name            string            `json:"name"`
-	Description     string            `json:"description"`
-	Version         any               `json:"version"`
-	Author          any               `json:"author"`
-	Contributors    any               `json:"contributors"`
-	License         any               `json:"license"`
-	Repository      any               `json:"repository"`
-	Homepage        any               `json:"homepage"`
-	Funding         any               `json:"funding"`
-	Keywords        any               `json:"keywords"`
-	Dependencies         any `json:"dependencies"`
-	DevDependencies      any `json:"devDependencies"`
-	OptionalDependencies any `json:"optionalDependencies"`
-	PeerDependencies     any `json:"peerDependencies"`
+	Name                 string              `json:"name"`
+	Description          string              `json:"description"`
+	Version              any                 `json:"version"`
+	Author               any                 `json:"author"`
+	Contributors         any                 `json:"contributors"`
+	License              any                 `json:"license"`
+	Repository           any                 `json:"repository"`
+	Homepage             any                 `json:"homepage"`
+	Funding              any                 `json:"funding"`
+	Keywords             any                 `json:"keywords"`
+	Dependencies         any                 `json:"dependencies"`
+	DevDependencies      any                 `json:"devDependencies"`
+	OptionalDependencies any                 `json:"optionalDependencies"`
+	PeerDependencies     any                 `json:"peerDependencies"`
 	PeerDependenciesMeta map[string]PeerMeta `json:"peerDependenciesMeta"`
-	Engines              any               `json:"engines"`
-	Files           any               `json:"files"`
-	Scripts         map[string]string `json:"scripts"`
-	Main            any               `json:"main"`
-	Bin             any               `json:"bin"`
-	Types           string            `json:"types"`
-	Exports         any               `json:"exports"`
-	Private         bool              `json:"private"`
-	Workspaces      any               `json:"workspaces"`
+	Engines              any                 `json:"engines"`
+	Files                any                 `json:"files"`
+	Scripts              map[string]string   `json:"scripts"`
+	Main                 any                 `json:"main"`
+	Bin                  any                 `json:"bin"`
+	Types                string              `json:"types"`
+	Exports              any                 `json:"exports"`
+	Private              bool                `json:"private"`
+	Workspaces           any                 `json:"workspaces"`
 }
 
 type Funding struct {
@@ -152,25 +158,30 @@ type PackageLock struct {
 }
 
 type PackageItem struct {
-	Name                 string            `json:"name,omitempty"`
-	Version              string            `json:"version,omitempty"`
-	Resolved             string            `json:"resolved,omitempty"`
-	Link                 bool              `json:"link,omitempty"`
-	Integrity            string            `json:"integrity,omitempty"`
-	License              any               `json:"license,omitempty"`
-	Etag                 string            `json:"etag,omitempty"`
-	Dependencies         map[string]string `json:"dependencies,omitempty"`
-	OptionalDependencies map[string]string `json:"optionalDependencies,omitempty"`
-	PeerDependencies     map[string]string `json:"peerDependencies,omitempty"`
-	Optional             bool              `json:"optional,omitempty"`
-	OS                   []string          `json:"os,omitempty"`
-	CPU                  []string          `json:"cpu,omitempty"`
+	Name                 string              `json:"name,omitempty"`
+	Version              string              `json:"version,omitempty"`
+	Resolved             string              `json:"resolved,omitempty"`
+	Link                 bool                `json:"link,omitempty"`
+	Integrity            string              `json:"integrity,omitempty"`
+	License              any                 `json:"license,omitempty"`
+	Etag                 string              `json:"etag,omitempty"`
+	Dependencies         map[string]string   `json:"dependencies,omitempty"`
+	DevDependencies      map[string]string   `json:"devDependencies,omitempty"`
+	OptionalDependencies map[string]string   `json:"optionalDependencies,omitempty"`
+	PeerDependencies     map[string]string   `json:"peerDependencies,omitempty"`
+	PeerDependenciesMeta map[string]PeerMeta `json:"peerDependenciesMeta,omitempty"`
+	Optional             bool                `json:"optional,omitempty"`
+	Dev                  bool                `json:"dev,omitempty"`
+	Bin                  any                 `json:"bin,omitempty"`
+	Engines              any                 `json:"engines,omitempty"`
+	OS                   []string            `json:"os,omitempty"`
+	CPU                  []string            `json:"cpu,omitempty"`
 }
 
 func NewPackageJSONParser(cfg *config.Config) *PackageJSONParser {
 	return &PackageJSONParser{
 		Config:       cfg,
-		LockFileName: "go-package-lock.json",
+		LockFileName: LOCK_FILE_NAME_GO_NPM,
 	}
 }
 
@@ -208,14 +219,14 @@ func (p *PackageJSONParser) ParseDefault() (*PackageJSON, error) {
 func (p *PackageJSONParser) ParseLockFile() (*PackageLock, error) {
 	file, err := os.Open(p.LockFileName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file package-lock.json: %w", err)
+		return nil, fmt.Errorf("failed to open file %s: %w", p.LockFileName, err)
 	}
 	defer file.Close()
 
 	var packageLock PackageLock
 
 	if err := json.NewDecoder(file).Decode(&packageLock); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON from file package-lock.json: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON from file %s: %w", p.LockFileName, err)
 	}
 
 	return &packageLock, nil
@@ -230,7 +241,7 @@ func (p *PackageJSONParser) CreateLockFile(data *PackageLock, isGlobal bool) err
 	file, err := os.Create(lockFile)
 
 	if err != nil {
-		return fmt.Errorf("failed to create file package-lock.json: %w", err)
+		return fmt.Errorf("failed to create file %s: %w", lockFile, err)
 	}
 	defer file.Close()
 
@@ -238,7 +249,7 @@ func (p *PackageJSONParser) CreateLockFile(data *PackageLock, isGlobal bool) err
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(data); err != nil {
-		return fmt.Errorf("failed to write JSON to file package-lock.json: %w", err)
+		return fmt.Errorf("failed to write JSON to file %s: %w", lockFile, err)
 	}
 
 	p.PackageLock = data
@@ -544,5 +555,14 @@ func (p *PackageJSONParser) RemoveFromLockFile(pkg string, pkgToRemove []string,
 		return err
 	}
 
+	return nil
+}
+
+func (p *PackageJSONParser) MigrateFromPackageLock() error {
+	lockData, err := os.ReadFile(LOCK_FILE_NAME_NPM)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", LOCK_FILE_NAME_NPM, err)
+	}
+	fmt.Println(lockData)
 	return nil
 }
