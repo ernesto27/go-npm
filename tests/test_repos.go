@@ -172,7 +172,7 @@ func (ts *TestSuite) cleanupRepo(repoPath, repoName string) {
 	}
 
 	// Remove go-package-lock
-	lockFilePath := filepath.Join(repoPath, "go-package-lock")
+	lockFilePath := filepath.Join(repoPath, "go-npm-lock.json")
 	if _, err := os.Stat(lockFilePath); err == nil {
 		ts.logMessage(fmt.Sprintf("[INFO] Removing go-package-lock from %s", repoName))
 		os.Remove(lockFilePath)
@@ -187,14 +187,19 @@ func (ts *TestSuite) cleanupRepo(repoPath, repoName string) {
 }
 
 // testRepo tests a repository with npm-packager
-func (ts *TestSuite) testRepo(repoPath, repoName string) error {
+func (ts *TestSuite) testRepo(repoPath, repoName string, withLockFile bool) error {
+	testPhase := "without lock file"
+	if withLockFile {
+		testPhase = "with lock file"
+	}
+
 	fmt.Println()
-	printStatus(ColorBlue, fmt.Sprintf("│ Testing '%s' with npm-packager", repoName))
+	printStatus(ColorBlue, fmt.Sprintf("│ Testing '%s' %s", repoName, testPhase))
 	printStatus(ColorBlue, "└─────────────────────────────────────────")
 
 	ts.logMessage("")
 	ts.logMessage("==========================================")
-	ts.logMessage(fmt.Sprintf("Testing: %s", repoName))
+	ts.logMessage(fmt.Sprintf("Testing: %s (%s)", repoName, testPhase))
 	ts.logMessage(fmt.Sprintf("Path: %s", repoPath))
 	ts.logMessage(fmt.Sprintf("Timestamp: %s", time.Now().Format("2006-01-02 15:04:05")))
 	ts.logMessage("==========================================")
@@ -205,6 +210,17 @@ func (ts *TestSuite) testRepo(repoPath, repoName string) error {
 		printStatus(ColorRed, fmt.Sprintf("✗ No package.json found in '%s', skipping", repoName))
 		ts.logMessage(fmt.Sprintf("[ERROR] No package.json found in %s", repoPath))
 		return fmt.Errorf("no package.json found")
+	}
+
+	// Verify lock file status matches expected test phase
+	lockFilePath := filepath.Join(repoPath, "go-npm-lock.json")
+	_, lockFileExists := os.Stat(lockFilePath)
+	if withLockFile && lockFileExists != nil {
+		printStatus(ColorYellow, "  ⚠  Expected lock file but none found, continuing anyway...")
+		ts.logMessage("[WARNING] Expected lock file but none found")
+	} else if !withLockFile && lockFileExists == nil {
+		printStatus(ColorYellow, "  ⚠  Lock file exists but testing without lock file phase, this shouldn't happen")
+		ts.logMessage("[WARNING] Lock file exists during 'without lock file' test phase")
 	}
 
 	// Run npm-packager
@@ -273,7 +289,7 @@ func (ts *TestSuite) testRepo(repoPath, repoName string) error {
 		return cmdErr
 	}
 
-	printStatus(ColorGreen, fmt.Sprintf("✓ Successfully installed dependencies for '%s' (%.1fs)", repoName, duration))
+	printStatus(ColorGreen, fmt.Sprintf("✓ Successfully installed dependencies for '%s' %s (%.1fs)", repoName, testPhase, duration))
 	ts.logMessage(fmt.Sprintf("[SUCCESS] npm-packager completed successfully in %.1fs", duration))
 
 	// Count installed packages
@@ -282,6 +298,17 @@ func (ts *TestSuite) testRepo(repoPath, repoName string) error {
 		pkgCount := len(entries)
 		printStatus(ColorGreen, fmt.Sprintf("  📦 Installed %d packages", pkgCount))
 		ts.logMessage(fmt.Sprintf("[INFO] Installed %d packages in node_modules", pkgCount))
+	}
+
+	// Verify lock file was created in first phase
+	if !withLockFile {
+		if _, err := os.Stat(lockFilePath); err == nil {
+			printStatus(ColorGreen, "  ✓ Lock file created successfully")
+			ts.logMessage("[INFO] go-npm-lock.json was created")
+		} else {
+			printStatus(ColorYellow, "  ⚠  Lock file was not created")
+			ts.logMessage("[WARNING] go-npm-lock.json was not created")
+		}
 	}
 
 	return nil
@@ -318,10 +345,8 @@ func (ts *TestSuite) Run() error {
 	printStatus(ColorGreen, "✓ Built npm-packager successfully")
 	fmt.Println()
 
-	// Process each repository
+	// Process each repository (2 tests per repo: without lock file, then with lock file)
 	for i, repo := range ts.Repositories {
-		ts.totalTests++
-
 		fmt.Println()
 		printStatus(ColorBlue, "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		printStatus(ColorBlue, fmt.Sprintf("┃ [%d/%d] Repository: %s", i+1, len(ts.Repositories), repo.Name))
@@ -330,17 +355,35 @@ func (ts *TestSuite) Run() error {
 		// Clone if needed
 		if err := ts.cloneRepoIfNeeded(repo); err != nil {
 			printStatus(ColorRed, fmt.Sprintf("  ✗ Failed to clone %s: %v", repo.Name, err))
-			ts.failedTests++
+			ts.failedTests += 2 // Both tests will fail
+			ts.totalTests += 2
 			continue
 		}
 
 		repoPath := filepath.Join(ts.TestReposDir, repo.Name)
 
-		// Clean up
+		// Clean up before first test
 		ts.cleanupRepo(repoPath, repo.Name)
 
-		// Test
-		if err := ts.testRepo(repoPath, repo.Name); err == nil {
+		// Test 1: Without lock file (fresh install)
+		ts.totalTests++
+		printStatus(ColorBlue, "\n  ═══ Phase 1: Testing without lock file ═══")
+		if err := ts.testRepo(repoPath, repo.Name, false); err == nil {
+			ts.successfulTests++
+		} else {
+			ts.failedTests++
+			// If first test fails, skip second test
+			printStatus(ColorYellow, "  ⊙ Skipping second test due to first test failure")
+			ts.totalTests++
+			ts.failedTests++
+			continue
+		}
+
+		// Test 2: With lock file (using existing lock file from first test)
+		// Don't clean up - keep the lock file and node_modules
+		ts.totalTests++
+		printStatus(ColorBlue, "\n  ═══ Phase 2: Testing with lock file ═══")
+		if err := ts.testRepo(repoPath, repo.Name, true); err == nil {
 			ts.successfulTests++
 		} else {
 			ts.failedTests++
@@ -362,7 +405,8 @@ func (ts *TestSuite) Run() error {
 	ts.logMessage("==========================================")
 	ts.logMessage("TEST SUMMARY")
 	ts.logMessage("==========================================")
-	ts.logMessage(fmt.Sprintf("Total repositories tested: %d", ts.totalTests))
+	ts.logMessage(fmt.Sprintf("Repositories: %d", len(ts.Repositories)))
+	ts.logMessage(fmt.Sprintf("Total tests (2 per repo): %d", ts.totalTests))
 	ts.logMessage(fmt.Sprintf("Successful: %d", ts.successfulTests))
 	ts.logMessage(fmt.Sprintf("Failed: %d", ts.failedTests))
 	ts.logMessage(fmt.Sprintf("Completed: %s", time.Now().Format("2006-01-02 15:04:05")))
@@ -371,7 +415,8 @@ func (ts *TestSuite) Run() error {
 	// Calculate success rate
 	successRate := float64(ts.successfulTests) / float64(ts.totalTests) * 100
 
-	printStatus(ColorBlue, fmt.Sprintf("  Total repositories tested: %d", ts.totalTests))
+	printStatus(ColorBlue, fmt.Sprintf("  Repositories: %d", len(ts.Repositories)))
+	printStatus(ColorBlue, fmt.Sprintf("  Total tests (2 phases per repo): %d", ts.totalTests))
 	printStatus(ColorGreen, fmt.Sprintf("  ✓ Successful: %d", ts.successfulTests))
 	if ts.failedTests > 0 {
 		printStatus(ColorRed, fmt.Sprintf("  ✗ Failed: %d", ts.failedTests))

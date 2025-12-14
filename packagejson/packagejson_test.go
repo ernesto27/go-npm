@@ -2,10 +2,11 @@ package packagejson
 
 import (
 	"encoding/json"
-	"github.com/ernesto27/go-npm/config"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ernesto27/go-npm/config"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -149,6 +150,120 @@ func TestPackageJSONParser_Parse(t *testing.T) {
 			}
 
 			tc.validate(t, result)
+		})
+	}
+}
+
+func TestPackageJSONParser_MigrateFromPackageLock(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setupFunc   func(t *testing.T) string
+		expectError bool
+		validate    func(t *testing.T, parser *PackageJSONParser)
+	}{
+		{
+			name: "Successful migration with root package dependencies",
+			setupFunc: func(t *testing.T) string {
+				tmpDir := t.TempDir()
+
+				// Create a package-lock.json with root package (empty key)
+				packageLockData := PackageLock{
+					Name:            "test-project",
+					Version:         "1.0.0",
+					LockfileVersion: 2,
+					Requires:        true,
+					Packages: map[string]PackageItem{
+						"": {
+							Name:    "test-project",
+							Version: "1.0.0",
+							Dependencies: map[string]string{
+								"express": "^4.18.0",
+								"lodash":  "^4.17.21",
+							},
+							DevDependencies: map[string]string{
+								"jest": "^29.0.0",
+							},
+						},
+						"node_modules/express": {
+							Version:  "4.18.2",
+							Resolved: "https://registry.npmjs.org/express/-/express-4.18.2.tgz",
+						},
+						"node_modules/lodash": {
+							Version:  "4.17.21",
+							Resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+						},
+						"node_modules/jest": {
+							Version:  "29.5.0",
+							Resolved: "https://registry.npmjs.org/jest/-/jest-29.5.0.tgz",
+							Dev:      true,
+						},
+					},
+				}
+
+				data, _ := json.MarshalIndent(packageLockData, "", "  ")
+				lockFile := filepath.Join(tmpDir, LOCK_FILE_NAME_NPM)
+				os.WriteFile(lockFile, data, 0644)
+
+				return tmpDir
+			},
+			expectError: false,
+			validate: func(t *testing.T, parser *PackageJSONParser) {
+				// Verify the migration created the go-npm lock file (in current temp directory)
+				assert.FileExists(t, LOCK_FILE_NAME_GO_NPM)
+
+				// Verify the PackageLock was updated correctly
+				assert.NotNil(t, parser.PackageLock)
+				assert.Equal(t, "test-project", parser.PackageLock.Name)
+				assert.Equal(t, "1.0.0", parser.PackageLock.Version)
+
+				// Verify dependencies were extracted from root package
+				assert.Equal(t, map[string]string{
+					"express": "^4.18.0",
+					"lodash":  "^4.17.21",
+				}, parser.PackageLock.Dependencies)
+
+				assert.Equal(t, map[string]string{
+					"jest": "^29.0.0",
+				}, parser.PackageLock.DevDependencies)
+
+				// Verify root package (empty key) was removed
+				_, exists := parser.PackageLock.Packages[""]
+				assert.False(t, exists, "Root package with empty key should be removed")
+
+				// Verify other packages are still present
+				assert.Contains(t, parser.PackageLock.Packages, "node_modules/express")
+				assert.Contains(t, parser.PackageLock.Packages, "node_modules/lodash")
+				assert.Contains(t, parser.PackageLock.Packages, "node_modules/jest")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := tc.setupFunc(t)
+
+			// Save current directory
+			originalDir, err := os.Getwd()
+			assert.NoError(t, err)
+			defer os.Chdir(originalDir)
+
+			// Change to temp directory
+			err = os.Chdir(tmpDir)
+			assert.NoError(t, err)
+
+			cfg, err := config.New()
+			assert.NoError(t, err)
+
+			parser := NewPackageJSONParser(cfg)
+			err = parser.MigrateFromPackageLock()
+
+			if tc.expectError {
+				assert.Error(t, err, "Expected an error")
+			} else {
+				assert.NoError(t, err, "Expected no error")
+			}
+
+			tc.validate(t, parser)
 		})
 	}
 }

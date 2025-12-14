@@ -289,6 +289,8 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 		}
 	}
 
+	lockFileExists := false
+
 	if pm.packageJsonParse.PackageLock != nil {
 		packagesToAdd, packagesToRemove := pm.packageJsonParse.ResolveDependencies()
 
@@ -318,22 +320,31 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 			return err
 		}
 
-		return nil
+		lockFileExists = true
+	} else {
+		fmt.Println("Migrating from package.json")
+		err := pm.packageJsonParse.MigrateFromPackageLock()
+		if err == nil {
+			pm.packageLock = pm.packageJsonParse.PackageLock
+			lockFileExists = true
+		}
 	}
 
-	err = pm.fetchToCache(*data, isProduction)
-	if err != nil {
-		return err
-	}
+	if !lockFileExists {
+		err = pm.fetchToCache(*data, isProduction)
+		if err != nil {
+			return err
+		}
 
-	err = pm.CreateWorkspaceSymlinks()
-	if err != nil {
-		return err
-	}
+		err = pm.CreateWorkspaceSymlinks()
+		if err != nil {
+			return err
+		}
 
-	err = pm.packageJsonParse.CreateLockFile(pm.packageLock, false)
-	if err != nil {
-		return err
+		err = pm.packageJsonParse.CreateLockFile(pm.packageLock, false)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -13,10 +13,6 @@
       "url": "https://github.com/tj/commander.js.git"
     },
     {
-      "name": "webpack",
-      "url": "https://github.com/webpack/webpack.git"
-    },
-    {
       "name": "rollup",
       "url": "https://github.com/rollup/rollup.git"
     },

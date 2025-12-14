@@ -563,6 +563,27 @@ func (p *PackageJSONParser) MigrateFromPackageLock() error {
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", LOCK_FILE_NAME_NPM, err)
 	}
-	fmt.Println(lockData)
+
+	var packageLock PackageLock
+	if err = json.Unmarshal(lockData, &packageLock); err != nil {
+		return fmt.Errorf("failed to parse %s: %w", LOCK_FILE_NAME_NPM, err)
+	}
+
+	for key, item := range packageLock.Packages {
+		if key == "" {
+			packageLock.Dependencies = item.Dependencies
+			packageLock.DevDependencies = item.DevDependencies
+			delete(packageLock.Packages, key)
+		}
+	}
+
+	err = p.CreateLockFile(&packageLock, false)
+	if err != nil {
+		return fmt.Errorf("failed to create go-npm lock file: %w", err)
+	}
+
+	p.PackageLock = &packageLock
+	p.LockFileContent = lockData
+
 	return nil
 }
