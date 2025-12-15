@@ -1127,7 +1127,33 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 				mapMutex.Unlock()
 
-				packageJsonPath := filepath.Join(pm.packagesPath, actualName+"@"+version, "package.json")
+				packageDir := filepath.Join(pm.packagesPath, actualName+"@"+version)
+				packageJsonPath := filepath.Join(packageDir, "package.json")
+
+				// Validate package.json exists and is not corrupted (non-zero size)
+				fileInfo, statErr := os.Stat(packageJsonPath)
+				if statErr != nil || fileInfo.Size() == 0 {
+					// Package.json is missing or empty - remove corrupted package directory
+					err = os.RemoveAll(packageDir)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to remove corrupted package %s: %w", actualName, err)
+						close(done)
+						return
+					}
+
+					// Re-extract from tarball
+					uniqueTarballName := generateUniqueTarballName(actualName, version)
+					tarballPath := filepath.Join(pm.tarball.TarballPath, uniqueTarballName)
+
+					if extractErr := pm.extractor.Extract(tarballPath, packageDir); extractErr != nil {
+						select {
+						case errChan <- fmt.Errorf("failed to re-extract corrupted package %s: %w", actualName, extractErr):
+							close(done)
+						default:
+						}
+						return
+					}
+				}
 
 				data, err := pm.packageJsonParse.Parse(packageJsonPath)
 				if err != nil {
