@@ -33,8 +33,8 @@
       "url": "https://github.com/microsoft/TypeScript"
     },
     {
-      "name": "fastify",
-      "url": "https://github.com/fastify/fastify"
+      "nama": "npm-cli",
+      "url": "https://github.com/npm/cli"
     }
   ]
 }

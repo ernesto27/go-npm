@@ -314,12 +314,6 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 
 		pm.packageLock = pm.packageJsonParse.PackageLock
 
-		// Create workspace symlinks even when lock file exists
-		err = pm.CreateWorkspaceSymlinks()
-		if err != nil {
-			return err
-		}
-
 		lockFileExists = true
 	} else {
 		fmt.Println("Migrating from package.json")
@@ -330,13 +324,14 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 		}
 	}
 
+	// Create workspace symlinks even when lock file exists
+	err = pm.CreateWorkspaceSymlinks()
+	if err != nil {
+		return err
+	}
+
 	if !lockFileExists {
 		err = pm.fetchToCache(*data, isProduction)
-		if err != nil {
-			return err
-		}
-
-		err = pm.CreateWorkspaceSymlinks()
 		if err != nil {
 			return err
 		}
