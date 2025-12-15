@@ -6,8 +6,10 @@ tests/repos
 tests/test-results.log
 
 go-package-lock.json
+go-npm-lock.json
 bun.lock
 data
+npm-packager
 
 # Build artifacts
 go-npm
