@@ -4,17 +4,13 @@
       "name": "lodash",
       "url": "https://github.com/lodash/lodash.git"
     },
-    {
+        {
       "name": "chalk",
       "url": "https://github.com/chalk/chalk.git"
     },
-    {
+        {
       "name": "commander",
       "url": "https://github.com/tj/commander.js.git"
-    },
-    {
-      "name": "rollup",
-      "url": "https://github.com/rollup/rollup.git"
     },
     {
       "name": "eslint",
@@ -33,7 +29,7 @@
       "url": "https://github.com/microsoft/TypeScript"
     },
     {
-      "nama": "npm-cli",
+      "name": "npm-cli",
       "url": "https://github.com/npm/cli"
     }
   ]

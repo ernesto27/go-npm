@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -39,6 +40,7 @@ type TestSuite struct {
 	totalTests      int
 	successfulTests int
 	failedTests     int
+	failedRepos     map[string]bool
 }
 
 // NewTestSuite creates a new test suite with default configuration
@@ -68,6 +70,7 @@ func NewTestSuite(scriptDir string) (*TestSuite, error) {
 		Repositories:   repos,
 		WorkspaceRepos: getDefaultWorkspaceRepos(),
 		logWriter:      logFile,
+		failedRepos:    make(map[string]bool),
 	}, nil
 }
 
@@ -357,6 +360,9 @@ func (ts *TestSuite) Run() error {
 			printStatus(ColorRed, fmt.Sprintf("  ✗ Failed to clone %s: %v", repo.Name, err))
 			ts.failedTests += 2 // Both tests will fail
 			ts.totalTests += 2
+			if repo.Name != "" {
+				ts.failedRepos[repo.Name] = true
+			}
 			continue
 		}
 
@@ -372,6 +378,9 @@ func (ts *TestSuite) Run() error {
 			ts.successfulTests++
 		} else {
 			ts.failedTests++
+			if repo.Name != "" {
+				ts.failedRepos[repo.Name] = true
+			}
 			// If first test fails, skip second test
 			printStatus(ColorYellow, "  ⊙ Skipping second test due to first test failure")
 			ts.totalTests++
@@ -387,6 +396,9 @@ func (ts *TestSuite) Run() error {
 			ts.successfulTests++
 		} else {
 			ts.failedTests++
+			if repo.Name != "" {
+				ts.failedRepos[repo.Name] = true
+			}
 		}
 	}
 
@@ -409,6 +421,18 @@ func (ts *TestSuite) Run() error {
 	ts.logMessage(fmt.Sprintf("Total tests (2 per repo): %d", ts.totalTests))
 	ts.logMessage(fmt.Sprintf("Successful: %d", ts.successfulTests))
 	ts.logMessage(fmt.Sprintf("Failed: %d", ts.failedTests))
+	if ts.failedTests > 0 && len(ts.failedRepos) > 0 {
+		ts.logMessage("Failed repositories:")
+		// Convert map to sorted slice for consistent output
+		failedRepoNames := make([]string, 0, len(ts.failedRepos))
+		for repoName := range ts.failedRepos {
+			failedRepoNames = append(failedRepoNames, repoName)
+		}
+		sort.Strings(failedRepoNames)
+		for _, repoName := range failedRepoNames {
+			ts.logMessage(fmt.Sprintf("  • %s", repoName))
+		}
+	}
 	ts.logMessage(fmt.Sprintf("Completed: %s", time.Now().Format("2006-01-02 15:04:05")))
 	ts.logMessage("==========================================")
 
@@ -420,6 +444,19 @@ func (ts *TestSuite) Run() error {
 	printStatus(ColorGreen, fmt.Sprintf("  ✓ Successful: %d", ts.successfulTests))
 	if ts.failedTests > 0 {
 		printStatus(ColorRed, fmt.Sprintf("  ✗ Failed: %d", ts.failedTests))
+		if len(ts.failedRepos) > 0 {
+			fmt.Println()
+			printStatus(ColorRed, "  Failed repositories:")
+			// Convert map to sorted slice for consistent output
+			failedRepoNames := make([]string, 0, len(ts.failedRepos))
+			for repoName := range ts.failedRepos {
+				failedRepoNames = append(failedRepoNames, repoName)
+			}
+			sort.Strings(failedRepoNames)
+			for _, repoName := range failedRepoNames {
+				printStatus(ColorRed, fmt.Sprintf("    • %s", repoName))
+			}
+		}
 	} else {
 		printStatus(ColorGreen, "  ✗ Failed: 0")
 	}

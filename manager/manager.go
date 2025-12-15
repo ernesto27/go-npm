@@ -126,6 +126,17 @@ func parseAliasVersion(version string) (string, string, bool) {
 	return actualPkg, actualVersion, true
 }
 
+// extractPackageName extracts the package name from a packageResolved path
+// Examples:
+//
+//	"node_modules/foo" → "foo"
+//	"node_modules/foo/node_modules/bar" → "bar"
+//	"node_modules/@scope/package" → "@scope/package"
+func extractPackageName(packageResolved string) string {
+	parts := strings.Split(packageResolved, "/node_modules/")
+	return parts[len(parts)-1]
+}
+
 // GitHubDependency represents a parsed GitHub dependency
 type GitHubDependency struct {
 	Owner string
@@ -1129,6 +1140,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 
 				mapMutex.Lock()
+				currentPkgName := extractPackageName(packageResolved)
 				for name, depVersion := range data.GetDependencies() {
 					pkgItem := packageLock.Packages[packageResolved]
 					if pkgItem.Dependencies == nil {
@@ -1136,6 +1148,11 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 					pkgItem.Dependencies[name] = depVersion
 					packageLock.Packages[packageResolved] = pkgItem
+
+					// Skip if package is trying to install itself as nested dependency
+					if name == currentPkgName {
+						continue
+					}
 
 					// Check if sub-dependency is also an alias
 					subDep := packagejson.Dependency{Name: name, Version: depVersion}
@@ -1162,6 +1179,11 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					pkgItem.OptionalDependencies[name] = depVersion
 					packageLock.Packages[packageResolved] = pkgItem
 
+					// Skip if package is trying to install itself as nested dependency
+					if name == currentPkgName {
+						continue
+					}
+
 					// Check if sub-dependency is also an alias
 					subDep := packagejson.Dependency{Name: name, Version: depVersion}
 					if actualPkg, actualVersion, isAlias := parseAliasVersion(depVersion); isAlias {
@@ -1187,6 +1209,11 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 					pkgItem.PeerDependencies[name] = depVersion
 					packageLock.Packages[packageResolved] = pkgItem
+
+					// Skip if package is trying to install itself as nested dependency
+					if name == currentPkgName {
+						continue
+					}
 
 					// Check if this peer dependency is optional
 					isPeerOptional := false
