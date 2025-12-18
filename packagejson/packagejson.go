@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ernesto27/go-npm/config"
+	"github.com/ernesto27/go-npm/yarnlock"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -15,6 +16,7 @@ import (
 const (
 	LOCK_FILE_NAME_GO_NPM = "go-npm-lock.json"
 	LOCK_FILE_NAME_NPM    = "package-lock.json"
+	LOCK_FILE_NAME_YARN   = "yarn.lock"
 )
 
 type Dependency struct {
@@ -142,6 +144,7 @@ type PackageJSONParser struct {
 	OriginalContent       []byte
 	LockFileContent       []byte
 	LockFileContentGlobal []byte
+	YarnLockParser        *yarnlock.YarnLockParser
 }
 
 type PackageLock struct {
@@ -178,10 +181,11 @@ type PackageItem struct {
 	CPU                  []string            `json:"cpu,omitempty"`
 }
 
-func NewPackageJSONParser(cfg *config.Config) *PackageJSONParser {
+func NewPackageJSONParser(cfg *config.Config, yarnParser *yarnlock.YarnLockParser) *PackageJSONParser {
 	return &PackageJSONParser{
-		Config:       cfg,
-		LockFileName: LOCK_FILE_NAME_GO_NPM,
+		Config:         cfg,
+		LockFileName:   LOCK_FILE_NAME_GO_NPM,
+		YarnLockParser: yarnParser,
 	}
 }
 
@@ -586,4 +590,104 @@ func (p *PackageJSONParser) MigrateFromPackageLock() error {
 	p.LockFileContent = lockData
 
 	return nil
+}
+
+// MigrateFromYarnLock converts yarn.lock (v1) to go-npm-lock.json
+func (p *PackageJSONParser) MigrateFromYarnLock() error {
+	if p.YarnLockParser == nil {
+		return fmt.Errorf("yarn lock parser not initialized")
+	}
+
+	lockData, err := os.ReadFile(LOCK_FILE_NAME_YARN)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", LOCK_FILE_NAME_YARN, err)
+	}
+
+	if !p.YarnLockParser.IsYarnV1(lockData) {
+		return fmt.Errorf("unsupported yarn.lock format: only v1 is supported")
+	}
+
+	yarnLock, err := p.YarnLockParser.ParseContent(lockData)
+	if err != nil {
+		return fmt.Errorf("failed to parse yarn.lock: %w", err)
+	}
+
+	packageLock := p.convertYarnToPackageLock(yarnLock)
+
+	err = p.CreateLockFile(packageLock, false)
+	if err != nil {
+		return fmt.Errorf("failed to create go-npm lock file: %w", err)
+	}
+
+	p.PackageLock = packageLock
+	p.LockFileContent = lockData
+
+	return nil
+}
+
+// convertYarnToPackageLock converts YarnLock to PackageLock format
+func (p *PackageJSONParser) convertYarnToPackageLock(yarnLock *yarnlock.YarnLock) *PackageLock {
+	packageLock := &PackageLock{
+		Name:            p.PackageJSON.Name,
+		LockfileVersion: 3,
+		Requires:        true,
+		Packages:        make(map[string]PackageItem),
+		Dependencies:    make(map[string]string),
+	}
+
+	// Get top-level dependencies from package.json
+	if p.PackageJSON != nil {
+		deps := p.PackageJSON.GetDependencies()
+		for name, version := range deps {
+			packageLock.Dependencies[name] = version
+		}
+
+		devDeps := p.PackageJSON.GetDevDependencies()
+		if len(devDeps) > 0 {
+			packageLock.DevDependencies = make(map[string]string)
+			for name, version := range devDeps {
+				packageLock.DevDependencies[name] = version
+			}
+		}
+
+		optDeps := p.PackageJSON.GetOptionalDependencies()
+		if len(optDeps) > 0 {
+			packageLock.OptionalDependencies = make(map[string]string)
+			for name, version := range optDeps {
+				packageLock.OptionalDependencies[name] = version
+			}
+		}
+	}
+
+	// Convert each yarn entry to a PackageItem
+	for _, entry := range yarnLock.Entries {
+		pkgPath := "node_modules/" + entry.Name
+
+		packageItem := PackageItem{
+			Name:      entry.Name,
+			Version:   entry.Version,
+			Resolved:  entry.Resolved,
+			Integrity: entry.Integrity,
+		}
+
+		// Copy dependencies
+		if len(entry.Dependencies) > 0 {
+			packageItem.Dependencies = make(map[string]string)
+			for depName, depVersion := range entry.Dependencies {
+				packageItem.Dependencies[depName] = depVersion
+			}
+		}
+
+		// Copy optional dependencies
+		if len(entry.OptionalDependencies) > 0 {
+			packageItem.OptionalDependencies = make(map[string]string)
+			for depName, depVersion := range entry.OptionalDependencies {
+				packageItem.OptionalDependencies[depName] = depVersion
+			}
+		}
+
+		packageLock.Packages[pkgPath] = packageItem
+	}
+
+	return packageLock
 }

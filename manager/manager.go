@@ -20,6 +20,7 @@ import (
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
 	"github.com/ernesto27/go-npm/workspace"
+	"github.com/ernesto27/go-npm/yarnlock"
 )
 
 const npmRegistryURL = "https://registry.npmjs.org/"
@@ -196,7 +197,7 @@ func BuildDependencies() (*Dependencies, error) {
 		PackageCopy:       packagecopy.NewPackageCopy(),
 		ParseJsonManifest: newParseJsonManifest(),
 		VersionInfo:       version.New(),
-		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg),
+		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
 	}, nil
 }
@@ -327,11 +328,20 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 
 		lockFileExists = true
 	} else {
-		fmt.Println("Migrating from package.json")
+		// Priority 1: Try npm lock file (package-lock.json)
 		err := pm.packageJsonParse.MigrateFromPackageLock()
 		if err == nil {
+			fmt.Println("Migrating from package-lock.json")
 			pm.packageLock = pm.packageJsonParse.PackageLock
 			lockFileExists = true
+		} else {
+			// Priority 2: Try yarn.lock (v1 only)
+			err = pm.packageJsonParse.MigrateFromYarnLock()
+			if err == nil {
+				fmt.Println("Migrating from yarn.lock")
+				pm.packageLock = pm.packageJsonParse.PackageLock
+				lockFileExists = true
+			}
 		}
 	}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ type Repository struct {
 // TestSuite manages the test execution
 type TestSuite struct {
 	TestReposDir   string
+	YarnTestDir    string
 	LogFile        string
 	NPMPackagerBin string
 	Repositories   []Repository
@@ -65,6 +67,7 @@ func NewTestSuite(scriptDir string) (*TestSuite, error) {
 
 	return &TestSuite{
 		TestReposDir:   filepath.Join(scriptDir, "repos"),
+		YarnTestDir:    filepath.Join(scriptDir, "yarn"),
 		LogFile:        logPath,
 		NPMPackagerBin: filepath.Join(scriptDir, "..", "npm-packager"),
 		Repositories:   repos,
@@ -478,7 +481,181 @@ func (ts *TestSuite) Run() error {
 	return nil
 }
 
+// RunYarnTests runs tests on projects in the tests/yarn directory
+func (ts *TestSuite) RunYarnTests() error {
+	printStatus(ColorBlue, "==========================================")
+	printStatus(ColorBlue, "  NPM-PACKAGER YARN TEST SUITE")
+	printStatus(ColorBlue, "==========================================")
+	fmt.Println()
+
+	ts.logMessage("NPM-Packager Yarn Test Suite")
+	ts.logMessage(fmt.Sprintf("Started: %s", time.Now().Format("2006-01-02 15:04:05")))
+	ts.logMessage("")
+
+	// Always rebuild npm-packager to ensure we're testing the latest code
+	printStatus(ColorYellow, "🔨 Building npm-packager...")
+
+	cmd := exec.Command("go", "build", "-o", "npm-packager")
+	cmd.Dir = filepath.Dir(ts.NPMPackagerBin)
+
+	buildOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		printStatus(ColorRed, fmt.Sprintf("Failed to build: %s", string(buildOutput)))
+		return fmt.Errorf("failed to build npm-packager: %w", err)
+	}
+
+	printStatus(ColorGreen, "✓ Built npm-packager successfully")
+	fmt.Println()
+
+	// Find all subdirectories in the yarn test directory
+	entries, err := os.ReadDir(ts.YarnTestDir)
+	if err != nil {
+		return fmt.Errorf("failed to read yarn test directory: %w", err)
+	}
+
+	var testProjects []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			projectPath := filepath.Join(ts.YarnTestDir, entry.Name())
+			packageJsonPath := filepath.Join(projectPath, "package.json")
+			if _, err := os.Stat(packageJsonPath); err == nil {
+				testProjects = append(testProjects, entry.Name())
+			}
+		}
+	}
+
+	if len(testProjects) == 0 {
+		printStatus(ColorYellow, "⚠  No test projects found in yarn directory")
+		printStatus(ColorYellow, fmt.Sprintf("  Add directories with package.json files to: %s", ts.YarnTestDir))
+		return nil
+	}
+
+	printStatus(ColorGreen, fmt.Sprintf("📋 Found %d yarn test projects", len(testProjects)))
+	fmt.Println()
+
+	// Process each test project (2 tests per project: without lock file, then with lock file)
+	for i, projectName := range testProjects {
+		fmt.Println()
+		printStatus(ColorBlue, "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		printStatus(ColorBlue, fmt.Sprintf("┃ [%d/%d] Yarn Project: %s", i+1, len(testProjects), projectName))
+		printStatus(ColorBlue, "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+		projectPath := filepath.Join(ts.YarnTestDir, projectName)
+
+		// Clean up before first test
+		ts.cleanupRepo(projectPath, projectName)
+
+		// Test 1: Without lock file (fresh install)
+		ts.totalTests++
+		printStatus(ColorBlue, "\n  ═══ Phase 1: Testing without lock file ═══")
+		if err := ts.testRepo(projectPath, projectName, false); err == nil {
+			ts.successfulTests++
+		} else {
+			ts.failedTests++
+			ts.failedRepos[projectName] = true
+			// If first test fails, skip second test
+			printStatus(ColorYellow, "  ⊙ Skipping second test due to first test failure")
+			ts.totalTests++
+			ts.failedTests++
+			continue
+		}
+
+		// Test 2: With lock file (using existing lock file from first test)
+		ts.totalTests++
+		printStatus(ColorBlue, "\n  ═══ Phase 2: Testing with lock file ═══")
+		if err := ts.testRepo(projectPath, projectName, true); err == nil {
+			ts.successfulTests++
+		} else {
+			ts.failedTests++
+			ts.failedRepos[projectName] = true
+		}
+	}
+
+	// Print summary
+	ts.printSummary(len(testProjects), "Yarn Projects")
+
+	if ts.failedTests > 0 {
+		return fmt.Errorf("yarn test suite failed with %d failures", ts.failedTests)
+	}
+
+	return nil
+}
+
+// printSummary prints the test summary
+func (ts *TestSuite) printSummary(totalItems int, itemType string) {
+	fmt.Println()
+	fmt.Println()
+	printStatus(ColorBlue, "╔══════════════════════════════════════════╗")
+	printStatus(ColorBlue, "║           TEST SUMMARY                   ║")
+	printStatus(ColorBlue, "╚══════════════════════════════════════════╝")
+	fmt.Println()
+
+	ts.logMessage("")
+	ts.logMessage("==========================================")
+	ts.logMessage("TEST SUMMARY")
+	ts.logMessage("==========================================")
+	ts.logMessage(fmt.Sprintf("%s: %d", itemType, totalItems))
+	ts.logMessage(fmt.Sprintf("Total tests (2 per item): %d", ts.totalTests))
+	ts.logMessage(fmt.Sprintf("Successful: %d", ts.successfulTests))
+	ts.logMessage(fmt.Sprintf("Failed: %d", ts.failedTests))
+	if ts.failedTests > 0 && len(ts.failedRepos) > 0 {
+		ts.logMessage("Failed items:")
+		failedNames := make([]string, 0, len(ts.failedRepos))
+		for name := range ts.failedRepos {
+			failedNames = append(failedNames, name)
+		}
+		sort.Strings(failedNames)
+		for _, name := range failedNames {
+			ts.logMessage(fmt.Sprintf("  • %s", name))
+		}
+	}
+	ts.logMessage(fmt.Sprintf("Completed: %s", time.Now().Format("2006-01-02 15:04:05")))
+	ts.logMessage("==========================================")
+
+	// Calculate success rate
+	successRate := float64(0)
+	if ts.totalTests > 0 {
+		successRate = float64(ts.successfulTests) / float64(ts.totalTests) * 100
+	}
+
+	printStatus(ColorBlue, fmt.Sprintf("  %s: %d", itemType, totalItems))
+	printStatus(ColorBlue, fmt.Sprintf("  Total tests (2 phases per item): %d", ts.totalTests))
+	printStatus(ColorGreen, fmt.Sprintf("  ✓ Successful: %d", ts.successfulTests))
+	if ts.failedTests > 0 {
+		printStatus(ColorRed, fmt.Sprintf("  ✗ Failed: %d", ts.failedTests))
+		if len(ts.failedRepos) > 0 {
+			fmt.Println()
+			printStatus(ColorRed, "  Failed items:")
+			failedNames := make([]string, 0, len(ts.failedRepos))
+			for name := range ts.failedRepos {
+				failedNames = append(failedNames, name)
+			}
+			sort.Strings(failedNames)
+			for _, name := range failedNames {
+				printStatus(ColorRed, fmt.Sprintf("    • %s", name))
+			}
+		}
+	} else {
+		printStatus(ColorGreen, "  ✗ Failed: 0")
+	}
+	fmt.Println()
+
+	if ts.failedTests == 0 {
+		printStatus(ColorGreen, fmt.Sprintf("  🎉 Success rate: %.1f%% - All tests passed!", successRate))
+	} else {
+		printStatus(ColorYellow, fmt.Sprintf("  📊 Success rate: %.1f%%", successRate))
+	}
+
+	printStatus(ColorBlue, fmt.Sprintf("  📝 Full logs saved to: %s", ts.LogFile))
+	fmt.Println()
+}
+
 func main() {
+	// Define command-line flags
+	yarnOnly := flag.Bool("yarn", false, "Run only yarn tests from tests/yarn directory")
+	reposOnly := flag.Bool("repos", false, "Run only repository tests")
+	flag.Parse()
+
 	// Detect project root by looking for go.mod or main.go
 	workDir, err := os.Getwd()
 	if err != nil {
@@ -501,7 +678,29 @@ func main() {
 	}
 	defer suite.Close()
 
-	if err := suite.Run(); err != nil {
+	var runErr error
+
+	// Determine which tests to run based on flags
+	if *yarnOnly {
+		// Run only yarn tests
+		runErr = suite.RunYarnTests()
+	} else if *reposOnly {
+		// Run only repository tests
+		runErr = suite.Run()
+	} else {
+		// Run both (default behavior - repos first, then yarn)
+		runErr = suite.Run()
+		if runErr == nil {
+			// Reset counters for yarn tests
+			suite.totalTests = 0
+			suite.successfulTests = 0
+			suite.failedTests = 0
+			suite.failedRepos = make(map[string]bool)
+			runErr = suite.RunYarnTests()
+		}
+	}
+
+	if runErr != nil {
 		os.Exit(1)
 	}
 }

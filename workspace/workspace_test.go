@@ -72,7 +72,7 @@ func TestExpandGlobPatterns(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			patterns, rootDir := tc.setupFunc(t)
-			parser := packagejson.NewPackageJSONParser(nil)
+			parser := packagejson.NewPackageJSONParser(nil, nil)
 			registry := NewWorkspaceRegistry(rootDir, parser)
 
 			paths, err := registry.expandGlobPatterns(patterns)
@@ -232,7 +232,7 @@ func TestDiscover(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			rootPkg, rootDir := tc.setupFunc(t)
-			parser := packagejson.NewPackageJSONParser(nil)
+			parser := packagejson.NewPackageJSONParser(nil, nil)
 			registry := NewWorkspaceRegistry(rootDir, parser)
 
 			err := registry.Discover(rootPkg)
@@ -259,7 +259,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Valid registry",
 			setupFunc: func(t *testing.T) *WorkspaceRegistry {
-				parser := packagejson.NewPackageJSONParser(nil)
+				parser := packagejson.NewPackageJSONParser(nil, nil)
 				registry := NewWorkspaceRegistry("/tmp", parser)
 				registry.Packages["@workspace/utils"] = &Workspace{
 					Name:    "@workspace/utils",
@@ -273,7 +273,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Missing name field",
 			setupFunc: func(t *testing.T) *WorkspaceRegistry {
-				parser := packagejson.NewPackageJSONParser(nil)
+				parser := packagejson.NewPackageJSONParser(nil, nil)
 				registry := NewWorkspaceRegistry("/tmp", parser)
 				registry.Packages[""] = &Workspace{
 					Name:    "",
@@ -317,7 +317,7 @@ func TestCreateSymlink(t *testing.T) {
 				workspacePath := filepath.Join(tmpDir, "packages", "utils")
 				require.NoError(t, os.MkdirAll(workspacePath, 0755))
 
-				parser := packagejson.NewPackageJSONParser(nil)
+				parser := packagejson.NewPackageJSONParser(nil, nil)
 				registry := NewWorkspaceRegistry(tmpDir, parser)
 
 				return nodeModulesDir, "utils", workspacePath, registry
@@ -346,7 +346,7 @@ func TestCreateSymlink(t *testing.T) {
 				workspacePath := filepath.Join(tmpDir, "packages", "utils")
 				require.NoError(t, os.MkdirAll(workspacePath, 0755))
 
-				parser := packagejson.NewPackageJSONParser(nil)
+				parser := packagejson.NewPackageJSONParser(nil, nil)
 				registry := NewWorkspaceRegistry(tmpDir, parser)
 
 				return nodeModulesDir, "@workspace/utils", workspacePath, registry
@@ -374,7 +374,7 @@ func TestCreateSymlink(t *testing.T) {
 				workspacePath := filepath.Join(tmpDir, "packages", "utils")
 				require.NoError(t, os.MkdirAll(workspacePath, 0755))
 
-				parser := packagejson.NewPackageJSONParser(nil)
+				parser := packagejson.NewPackageJSONParser(nil, nil)
 				registry := NewWorkspaceRegistry(tmpDir, parser)
 
 				err := registry.CreateSymlink(nodeModulesDir, "utils", workspacePath)

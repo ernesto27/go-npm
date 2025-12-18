@@ -140,7 +140,7 @@ func TestPackageJSONParser_Parse(t *testing.T) {
 			cfg, err := config.New()
 			assert.NoError(t, err)
 
-			parser := NewPackageJSONParser(cfg)
+			parser := NewPackageJSONParser(cfg, nil)
 			result, err := parser.Parse("package.json")
 
 			if tc.expectError {
@@ -254,7 +254,7 @@ func TestPackageJSONParser_MigrateFromPackageLock(t *testing.T) {
 			cfg, err := config.New()
 			assert.NoError(t, err)
 
-			parser := NewPackageJSONParser(cfg)
+			parser := NewPackageJSONParser(cfg, nil)
 			err = parser.MigrateFromPackageLock()
 
 			if tc.expectError {
