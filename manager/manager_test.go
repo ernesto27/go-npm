@@ -50,7 +50,7 @@ func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
-		Progress:          progress.New("test"),
+		Progress:          progress.New("test", false),
 	}
 }
 

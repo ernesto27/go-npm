@@ -11,6 +11,7 @@ import (
 var (
 	globalFlag     bool
 	productionFlag bool
+	verboseFlag    bool
 )
 
 var installCmd = &cobra.Command{
@@ -25,6 +26,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	installCmd.Flags().BoolVarP(&globalFlag, "global", "g", false, "Install package globally")
 	installCmd.Flags().BoolVar(&productionFlag, "production", false, "Install only production dependencies")
+	installCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "Show verbose output with all installed packages")
 }
 
 func parsePackageArg(pkgArg string) (string, string) {
@@ -38,7 +40,7 @@ func parsePackageArg(pkgArg string) (string, string) {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	deps, err := manager.BuildDependencies(getVersion())
+	deps, err := manager.BuildDependencies(getVersion(), verboseFlag)
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}

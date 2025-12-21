@@ -176,7 +176,7 @@ func parseGitHubDependency(version string) (*GitHubDependency, bool) {
 	}, true
 }
 
-func BuildDependencies(appVersion string) (*Dependencies, error) {
+func BuildDependencies(appVersion string, verbose bool) (*Dependencies, error) {
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config: %w", err)
@@ -203,7 +203,7 @@ func BuildDependencies(appVersion string) (*Dependencies, error) {
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
-		Progress:          progress.New(appVersion),
+		Progress:          progress.New(appVersion, verbose),
 	}, nil
 }
 
@@ -557,7 +557,7 @@ func (pm *PackageManager) InstallFromCache() error {
 			}
 
 			targetPath := path.Join(pm.extractedPath, namePkg)
-			pm.progress.SetStatus(fmt.Sprintf("Installing %s@%s", pkgName, item.Version))
+			pm.progress.SetStatus(fmt.Sprintf("↓ %s@%s", pkgName, item.Version))
 			err := pm.packageCopy.CopyDirectory(pathPkg, targetPath)
 			if err != nil {
 				errChan <- err
@@ -1130,7 +1130,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 				}
 				packageLock.Packages[packageResolved] = pckItem
-				pm.progress.SetStatus(fmt.Sprintf("Fetching %s@%s", item.Dep.Name, version))
+				pm.progress.SetStatus(fmt.Sprintf("↓ %s@%s", item.Dep.Name, version))
 
 				// Add to OptionalDependencies in lock if this is a top-level optional dependency
 				if item.IsOptional && item.ParentName == "package.json" {

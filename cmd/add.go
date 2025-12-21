@@ -22,7 +22,7 @@ func init() {
 func runAdd(cmd *cobra.Command, args []string) error {
 	pkg, version := parsePackageArg(args[0])
 
-	deps, err := manager.BuildDependencies(getVersion())
+	deps, err := manager.BuildDependencies(getVersion(), false)
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}

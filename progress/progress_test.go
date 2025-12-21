@@ -44,7 +44,7 @@ func TestNew(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := New(tc.version)
+			p := New(tc.version, false)
 			tc.validate(t, p)
 		})
 	}
@@ -60,7 +60,7 @@ func TestAddTopLevel(t *testing.T) {
 		{
 			name: "Add single top-level package",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			packages: []PackageInfo{
 				{Name: "express", Version: "5.2.1"},
@@ -74,7 +74,7 @@ func TestAddTopLevel(t *testing.T) {
 		{
 			name: "Add multiple top-level packages",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			packages: []PackageInfo{
 				{Name: "express", Version: "5.2.1"},
@@ -91,7 +91,7 @@ func TestAddTopLevel(t *testing.T) {
 		{
 			name: "Add scoped package",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			packages: []PackageInfo{
 				{Name: "@babel/core", Version: "7.28.5"},
@@ -125,7 +125,7 @@ func TestIncrementCount(t *testing.T) {
 		{
 			name: "Increment once",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			incrementBy:   1,
 			expectedCount: 1,
@@ -133,7 +133,7 @@ func TestIncrementCount(t *testing.T) {
 		{
 			name: "Increment multiple times",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			incrementBy:   5,
 			expectedCount: 5,
@@ -141,7 +141,7 @@ func TestIncrementCount(t *testing.T) {
 		{
 			name: "Increment from non-zero",
 			setupFunc: func() *Progress {
-				p := New("1.0.0")
+				p := New("1.0.0", false)
 				p.totalCount = 10
 				return p
 			},
@@ -151,7 +151,7 @@ func TestIncrementCount(t *testing.T) {
 		{
 			name: "Increment many times (simulate large install)",
 			setupFunc: func() *Progress {
-				return New("1.0.0")
+				return New("1.0.0", false)
 			},
 			incrementBy:   149,
 			expectedCount: 149,
@@ -173,11 +173,13 @@ func TestSetStatus(t *testing.T) {
 	testCases := []struct {
 		name     string
 		message  string
+		verbose  bool
 		validate func(t *testing.T, p *Progress)
 	}{
 		{
 			name:    "Set resolving status",
 			message: "Resolving dependencies...",
+			verbose: false,
 			validate: func(t *testing.T, p *Progress) {
 				assert.Equal(t, " Resolving dependencies...", p.spinner.Suffix)
 			},
@@ -185,6 +187,7 @@ func TestSetStatus(t *testing.T) {
 		{
 			name:    "Set fetching status",
 			message: "Fetching express@5.2.1...",
+			verbose: false,
 			validate: func(t *testing.T, p *Progress) {
 				assert.Equal(t, " Fetching express@5.2.1...", p.spinner.Suffix)
 			},
@@ -192,15 +195,34 @@ func TestSetStatus(t *testing.T) {
 		{
 			name:    "Set empty status",
 			message: "",
+			verbose: false,
 			validate: func(t *testing.T, p *Progress) {
 				assert.Equal(t, " ", p.spinner.Suffix)
+			},
+		},
+		{
+			name:    "Verbose true sets spinner suffix",
+			message: "↓ express@5.2.1",
+			verbose: true,
+			validate: func(t *testing.T, p *Progress) {
+				assert.Equal(t, " ↓ express@5.2.1", p.spinner.Suffix)
+				assert.True(t, p.verbose)
+			},
+		},
+		{
+			name:    "Verbose false sets spinner suffix",
+			message: "↓ lodash@4.17.21",
+			verbose: false,
+			validate: func(t *testing.T, p *Progress) {
+				assert.Equal(t, " ↓ lodash@4.17.21", p.spinner.Suffix)
+				assert.False(t, p.verbose)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := New("1.0.0")
+			p := New("1.0.0", tc.verbose)
 			p.SetStatus(tc.message)
 			tc.validate(t, p)
 		})

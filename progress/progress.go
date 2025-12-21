@@ -20,10 +20,11 @@ type Progress struct {
 	totalCount int
 	mu         sync.Mutex
 	version    string
+	verbose    bool
 }
 
 // New creates a new Progress instance with the given version
-func New(version string) *Progress {
+func New(version string, verbose bool) *Progress {
 	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
 	s.Color("cyan")
 
@@ -31,6 +32,7 @@ func New(version string) *Progress {
 		spinner:  s,
 		topLevel: make([]PackageInfo, 0),
 		version:  version,
+		verbose:  verbose,
 	}
 }
 
@@ -43,10 +45,17 @@ func (p *Progress) Start() {
 }
 
 // SetStatus updates the spinner status message
+// When verbose mode is enabled, it also prints the message to stdout
 func (p *Progress) SetStatus(msg string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.spinner.Suffix = " " + msg
+
+	if p.verbose {
+		p.spinner.Stop()
+		fmt.Printf("  %s\n", msg)
+		p.spinner.Start()
+	}
 }
 
 // AddTopLevel adds a top-level package to be shown in the summary
@@ -91,3 +100,4 @@ func (p *Progress) Warn(format string, args ...interface{}) {
 	fmt.Printf("warning: "+format+"\n", args...)
 	p.spinner.Start()
 }
+
