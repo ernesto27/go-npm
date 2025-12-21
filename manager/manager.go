@@ -16,6 +16,7 @@ import (
 	manifestpkg "github.com/ernesto27/go-npm/manifest"
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
+	"github.com/ernesto27/go-npm/progress"
 	"github.com/ernesto27/go-npm/tarball"
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
@@ -61,6 +62,8 @@ type PackageManager struct {
 	workspaceRegistry *workspace.WorkspaceRegistry
 	downloadMu        sync.Mutex
 	downloadLocks     map[string]*sync.Mutex
+	progress          *progress.Progress
+	version           string
 }
 
 type Package struct {
@@ -83,6 +86,7 @@ type Dependencies struct {
 	VersionInfo       *version.Info
 	PackageJsonParse  *packagejson.PackageJSONParser
 	BinLinker         *binlink.BinLinker
+	Progress          *progress.Progress
 }
 
 type QueueItem struct {
@@ -172,7 +176,7 @@ func parseGitHubDependency(version string) (*GitHubDependency, bool) {
 	}, true
 }
 
-func BuildDependencies() (*Dependencies, error) {
+func BuildDependencies(appVersion string) (*Dependencies, error) {
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config: %w", err)
@@ -199,6 +203,7 @@ func BuildDependencies() (*Dependencies, error) {
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
+		Progress:          progress.New(appVersion),
 	}, nil
 }
 
@@ -223,6 +228,7 @@ func New(deps *Dependencies) (*PackageManager, error) {
 		packageJsonParse:  deps.PackageJsonParse,
 		binLinker:         deps.BinLinker,
 		downloadLocks:     make(map[string]*sync.Mutex),
+		progress:          deps.Progress,
 	}, nil
 }
 
@@ -278,6 +284,8 @@ func (pm *PackageManager) SetupGlobal() error {
 }
 
 func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
+	pm.progress.Start()
+
 	data, err := pm.packageJsonParse.ParseDefault()
 	if err != nil {
 		return err
@@ -331,14 +339,14 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 		// Priority 1: Try npm lock file (package-lock.json)
 		err := pm.packageJsonParse.MigrateFromPackageLock()
 		if err == nil {
-			fmt.Println("Migrating from package-lock.json")
+			fmt.Println("\nMigrating from package-lock.json")
 			pm.packageLock = pm.packageJsonParse.PackageLock
 			lockFileExists = true
 		} else {
 			// Priority 2: Try yarn.lock (v1 only)
 			err = pm.packageJsonParse.MigrateFromYarnLock()
 			if err == nil {
-				fmt.Println("Migrating from yarn.lock")
+				fmt.Println("\nMigrating from yarn.lock")
 				pm.packageLock = pm.packageJsonParse.PackageLock
 				lockFileExists = true
 			}
@@ -371,15 +379,11 @@ func (pm *PackageManager) CreateWorkspaceSymlinks() error {
 		return nil
 	}
 
-	fmt.Println("Creating workspace symlinks...")
-
 	for _, wsPkg := range pm.workspaceRegistry.Packages {
 		err := pm.workspaceRegistry.CreateSymlink(pm.extractedPath, wsPkg.Name, wsPkg.Path)
 		if err != nil {
 			return fmt.Errorf("failed to create symlink for %s: %w", wsPkg.Name, err)
 		}
-
-		fmt.Printf("  ✓ Linked %s\n", wsPkg.Name)
 	}
 
 	return nil
@@ -430,6 +434,28 @@ func (pm *PackageManager) removeDevOnlyPackages() {
 }
 
 func (pm *PackageManager) InstallFromCache() error {
+	// Track total count from lock file
+	for _, item := range pm.packageLock.Packages {
+		if item.Link {
+			continue
+		}
+		pm.progress.IncrementCount()
+	}
+
+	// Track top-level packages (from package.json dependencies)
+	for pkgName := range pm.packageLock.Dependencies {
+		pkgPath := "node_modules/" + pkgName
+		if item, ok := pm.packageLock.Packages[pkgPath]; ok {
+			pm.progress.AddTopLevel(pkgName, item.Version)
+		}
+	}
+	for pkgName := range pm.packageLock.DevDependencies {
+		pkgPath := "node_modules/" + pkgName
+		if item, ok := pm.packageLock.Packages[pkgPath]; ok {
+			pm.progress.AddTopLevel(pkgName, item.Version)
+		}
+	}
+
 	packagesToInstall := make(map[string]packagejson.PackageItem)
 	for pkgPath := range pm.packageLock.Packages {
 		item := pm.packageLock.Packages[pkgPath]
@@ -474,7 +500,6 @@ func (pm *PackageManager) InstallFromCache() error {
 			exists := utils.FolderExists(pathPkg)
 			if !exists {
 				if item.Resolved == "" {
-					fmt.Printf("Skipping package %s - empty resolved URL in lock file\n", item.Name)
 					return
 				}
 
@@ -485,7 +510,6 @@ func (pm *PackageManager) InstallFromCache() error {
 				if tarballURL, filename, isGit := convertGitURLToTarball(item.Resolved); isGit {
 					downloadURL = tarballURL
 					tarballFilename = filename
-					fmt.Printf("Converting git URL to tarball for %s\n", pkgName)
 				}
 
 				// Lock based on package@version to prevent concurrent extractions to the same directory
@@ -533,6 +557,7 @@ func (pm *PackageManager) InstallFromCache() error {
 			}
 
 			targetPath := path.Join(pm.extractedPath, namePkg)
+			pm.progress.SetStatus(fmt.Sprintf("Installing %s@%s", pkgName, item.Version))
 			err := pm.packageCopy.CopyDirectory(pathPkg, targetPath)
 			if err != nil {
 				errChan <- err
@@ -552,6 +577,7 @@ func (pm *PackageManager) InstallFromCache() error {
 		return fmt.Errorf("failed to link bin executables: %w", err)
 	}
 
+	pm.progress.Finish()
 	return nil
 }
 
@@ -592,7 +618,6 @@ func (pm *PackageManager) Add(pkgName string, version string, isInstall bool) er
 		deps := packageJson.GetDependencies()
 		if _, exists := deps[pkgName]; exists {
 			if version != "" && deps[pkgName] == version {
-				fmt.Println("Package", pkgName, "already exists in dependencies with the same version", version)
 				return nil
 			}
 		}
@@ -626,7 +651,6 @@ func (pm *PackageManager) Add(pkgName string, version string, isInstall bool) er
 func (pm *PackageManager) Remove(pkg string, removeFromPackageJson bool) error {
 
 	pkgToRemove := pm.packageJsonParse.ResolveDependenciesToRemove(pkg)
-	fmt.Println(pkgToRemove)
 
 	err := pm.binLinker.UnlinkPackage(pkg)
 	if err != nil {
@@ -656,13 +680,6 @@ func (pm *PackageManager) Remove(pkg string, removeFromPackageJson bool) error {
 func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isProduction bool) error {
 	queue := make([]QueueItem, 0)
 
-	// Print workspace info if already discovered
-	if pm.workspaceRegistry != nil {
-		fmt.Printf("Discovered %d workspace packages\n", len(pm.workspaceRegistry.Packages))
-		for _, ws := range pm.workspaceRegistry.Packages {
-			fmt.Printf("  - %s@%s\n", ws.Name, ws.Version)
-		}
-	}
 
 	for name, version := range packageJson.GetDependencies() {
 		dep := packagejson.Dependency{Name: name, Version: version}
@@ -885,8 +902,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					version = commitSHA
 					tarballURL = buildGitHubTarballURL(ghDep.Owner, ghDep.Repo, commitSHA)
 					resolvedURL = buildGitHubResolvedURL(ghDep.Owner, ghDep.Repo, commitSHA)
-
-					fmt.Printf("Resolved GitHub %s/%s#%s to commit %s\n", ghDep.Owner, ghDep.Repo, ghDep.Ref, commitSHA[:8])
 				} else {
 					// NPM package - download manifest and resolve version
 					pm.downloadMu.Lock()
@@ -943,15 +958,11 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 				packageKey := actualName + "@" + version
 
-				if version == "" {
-					fmt.Println("Version not found for package:", item.Dep.Name, "with constraint:", item.Dep.Version)
-				}
-
+	
 				// Check platform compatibility for optional dependencies
 				if item.IsOptional {
 					if versionData, ok := npmPackage.Versions[version]; ok {
 						if !utils.IsCompatiblePlatform(versionData.OS, versionData.CPU) {
-							fmt.Printf("Skipping optional dependency %s@%s (incompatible platform)\n", item.Dep.Name, version)
 							// Still add to lock file but skip download
 							mapMutex.Lock()
 							packageResolved := "node_modules/" + item.Dep.Name
@@ -1007,11 +1018,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 							return
 						}
 
-						fmt.Println("Package Repeated:", item.Dep.Name)
-						fmt.Println("Resolved version:", version)
-						fmt.Println("Existing version:", existingPkg.Dep.Version, "does not satisfy constraint:", item.Dep.Version)
-						fmt.Println("Installing nested at:", packageResolved)
-
 						processingPkgs[processingKey] = true
 					} else {
 						mapMutex.Unlock()
@@ -1059,7 +1065,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				// Check again if folder exists after acquiring lock
 				if !utils.FolderExists(configPackageVersion) {
 					if tarballURL == "" || version == "" {
-						fmt.Printf("Skipping download for %s - invalid URL or empty version\n", item.Dep.Name)
 						return
 					}
 
@@ -1125,6 +1130,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 				}
 				packageLock.Packages[packageResolved] = pckItem
+				pm.progress.SetStatus(fmt.Sprintf("Fetching %s@%s", item.Dep.Name, version))
 
 				// Add to OptionalDependencies in lock if this is a top-level optional dependency
 				if item.IsOptional && item.ParentName == "package.json" {
@@ -1398,7 +1404,7 @@ func (pm *PackageManager) InstallGlobal(pkgName, version string) error {
 		return fmt.Errorf("package manager is not in global mode")
 	}
 
-	fmt.Printf("Installing %s globally...\n", pkgName)
+	pm.progress.Start()
 
 	if version == "" {
 		version = "latest"

@@ -21,7 +21,7 @@ func init() {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
-	deps, err := manager.BuildDependencies()
+	deps, err := manager.BuildDependencies(getVersion())
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}

@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/ernesto27/go-npm/manager"
 	"strings"
-	"time"
 
+	"github.com/ernesto27/go-npm/manager"
 	"github.com/spf13/cobra"
 )
 
@@ -39,9 +38,7 @@ func parsePackageArg(pkgArg string) (string, string) {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	startTime := time.Now()
-
-	deps, err := manager.BuildDependencies()
+	deps, err := manager.BuildDependencies(getVersion())
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}
@@ -66,7 +63,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("error installing globally: %w", err)
 		}
 
-		fmt.Printf("\nExecution completed in: %v\n", time.Since(startTime))
 		return nil
 	}
 
@@ -78,6 +74,5 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\nExecution completed in: %v\n", time.Since(startTime))
 	return nil
 }

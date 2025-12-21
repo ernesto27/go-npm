@@ -87,8 +87,6 @@ func (e *TGZExtractor) extractToDirectory(srcPath, destPath string) error {
 			if err := e.extractFile(tr, target, header, copyBuffer); err != nil {
 				return err
 			}
-		default:
-			fmt.Printf("Skipping unsupported file type: %c for %s\n", header.Typeflag, header.Name)
 		}
 	}
 

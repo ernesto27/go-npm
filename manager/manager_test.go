@@ -8,6 +8,7 @@ import (
 	"github.com/ernesto27/go-npm/manifest"
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
+	"github.com/ernesto27/go-npm/progress"
 	"github.com/ernesto27/go-npm/tarball"
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
@@ -49,6 +50,7 @@ func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
+		Progress:          progress.New("test"),
 	}
 }
 

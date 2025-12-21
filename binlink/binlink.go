@@ -180,7 +180,6 @@ func (bl *BinLinker) createSymlink(pkgPath, binName, binRelativePath string) err
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", linkPath, targetPath, err)
 	}
 
-	fmt.Printf("Linked bin: %s -> %s\n", binName, targetPath)
 	return nil
 }
 
@@ -226,7 +225,6 @@ func (bl *BinLinker) UnlinkPackage(pkgName string) error {
 		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove symlink %s: %w", linkPath, err)
 		}
-		fmt.Printf("Unlinked bin: %s\n", binName)
 	}
 
 	return nil

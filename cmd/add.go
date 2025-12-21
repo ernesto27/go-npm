@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"github.com/ernesto27/go-npm/manager"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -21,15 +20,9 @@ func init() {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	startTime := time.Now()
-
 	pkg, version := parsePackageArg(args[0])
-	fmt.Printf("Package: %s\n", pkg)
-	if version != "" {
-		fmt.Printf("Version: %s\n", version)
-	}
 
-	deps, err := manager.BuildDependencies()
+	deps, err := manager.BuildDependencies(getVersion())
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}
@@ -43,6 +36,5 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error adding package: %w", err)
 	}
 
-	fmt.Printf("\nExecution completed in: %v\n", time.Since(startTime))
 	return nil
 }
