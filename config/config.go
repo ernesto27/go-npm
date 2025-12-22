@@ -63,6 +63,8 @@ func (c *Config) EnsureDirectories() error {
 		c.ManifestDir,
 		c.TarballDir,
 		c.PackagesDir,
+		c.GlobalDir,
+
 		filepath.Join(c.BaseDir, "etag"),
 	}
 
@@ -79,6 +81,7 @@ func (c *Config) ClearCache() error {
 	cacheDirs := []string{
 		c.ManifestDir,
 		c.PackagesDir,
+		c.TarballDir,
 		filepath.Join(c.BaseDir, "etag"),
 	}
 
