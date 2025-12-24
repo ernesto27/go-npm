@@ -24,6 +24,13 @@ import (
 func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 	t.Helper()
 
+	// Set GO_NPM_HOME to use temp directory instead of real ~/.config/go-npm
+	originalHome := os.Getenv("GO_NPM_HOME")
+	os.Setenv("GO_NPM_HOME", baseDir)
+	t.Cleanup(func() {
+		os.Setenv("GO_NPM_HOME", originalHome)
+	})
+
 	cfg, err := config.New()
 	if err != nil {
 		t.Fatalf("failed to create config: %v", err)
@@ -613,7 +620,8 @@ func TestFetchToCache(t *testing.T) {
 				assert.DirExists(t, pkgPath, "is-even should be cached")
 
 				// Verify its dependency (is-odd) was also cached
-				depPkgPath := filepath.Join(pm.packagesPath, "is-odd@3.0.1")
+				// Note: is-even@1.0.0 depends on is-odd@^0.1.2, which resolves to 0.1.2
+				depPkgPath := filepath.Join(pm.packagesPath, "is-odd@0.1.2")
 				assert.DirExists(t, depPkgPath, "is-odd dependency should be cached")
 
 				// Verify packageLock contains both packages
@@ -1222,7 +1230,8 @@ func TestAdd(t *testing.T) {
 				assert.DirExists(t, cachedPath)
 
 				// Verify dependency was also cached
-				depCachedPath := filepath.Join(pm.packagesPath, "is-odd@3.0.1")
+				// Note: is-even@1.0.0 depends on is-odd@^0.1.2, which resolves to 0.1.2
+				depCachedPath := filepath.Join(pm.packagesPath, "is-odd@0.1.2")
 				assert.DirExists(t, depCachedPath)
 
 				// Verify packageLock was updated

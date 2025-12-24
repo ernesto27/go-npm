@@ -141,8 +141,8 @@ func TestFetchToCacheWithWorkspaces(t *testing.T) {
 				depPath := filepath.Join(pm.packagesPath, "is-even@1.0.0")
 				assert.DirExists(t, depPath, "workspace dependency should be cached")
 
-				// Verify transitive dependency (is-even depends on is-odd)
-				transitivePath := filepath.Join(pm.packagesPath, "is-odd@3.0.1")
+				// Verify transitive dependency (is-even depends on is-odd@^0.1.2)
+				transitivePath := filepath.Join(pm.packagesPath, "is-odd@0.1.2")
 				assert.DirExists(t, transitivePath, "transitive dependency should be cached")
 
 				// Verify lock file tracks all dependencies
