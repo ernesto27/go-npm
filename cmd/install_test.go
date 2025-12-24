@@ -2,52 +2,19 @@ package cmd
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ernesto27/go-npm/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// buildBinary builds the go-npm binary for testing and returns the path to it.
-// The binary is built in a temp directory to avoid polluting the project.
-func buildBinary(t *testing.T) string {
-	t.Helper()
-
-	tmpDir := t.TempDir()
-	binaryPath := filepath.Join(tmpDir, "go-npm-test")
-
-	// Get project root (parent of cmd directory)
-	projectRoot, err := filepath.Abs("..")
-	require.NoError(t, err, "failed to get project root")
-
-	cmd := exec.Command("go", "build", "-o", binaryPath, ".")
-	cmd.Dir = projectRoot
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to build binary: %s", string(output))
-
-	return binaryPath
-}
-
-// runWithIsolatedCache runs a command with GO_NPM_HOME set to a temp directory
-// to avoid polluting the user's real cache at ~/.config/go-npm
-func runWithIsolatedCache(t *testing.T, binaryPath string, workDir string, args ...string) ([]byte, error, string) {
-	t.Helper()
-
-	cacheDir := t.TempDir()
-
-	cmd := exec.Command(binaryPath, args...)
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GO_NPM_HOME="+cacheDir, "HOME="+cacheDir)
-
-	output, err := cmd.CombinedOutput()
-	return output, err, cacheDir
-}
-
 func TestInstallCLI(t *testing.T) {
-	binaryPath := buildBinary(t)
+	projectRoot, err := filepath.Abs("..")
+	require.NoError(t, err)
+	binaryPath := utils.BuildTestBinary(t, projectRoot)
 
 	testCases := []struct {
 		name        string
@@ -145,7 +112,7 @@ func TestInstallCLI(t *testing.T) {
 
 			tc.setupFunc(t, testDir)
 
-			output, err, cacheDir := runWithIsolatedCache(t, binaryPath, testDir, tc.args...)
+			output, err, cacheDir := utils.RunWithIsolatedCache(t, binaryPath, testDir, tc.args...)
 
 			t.Logf("CLI output:\n%s", string(output))
 
@@ -163,7 +130,9 @@ func TestInstallCLI(t *testing.T) {
 }
 
 func TestInstallCLI_Global(t *testing.T) {
-	binaryPath := buildBinary(t)
+	projectRoot, err := filepath.Abs("..")
+	require.NoError(t, err)
+	binaryPath := utils.BuildTestBinary(t, projectRoot)
 
 	testCases := []struct {
 		name        string
@@ -218,7 +187,7 @@ func TestInstallCLI_Global(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testDir := t.TempDir()
 
-			output, err, cacheDir := runWithIsolatedCache(t, binaryPath, testDir, tc.args...)
+			output, err, cacheDir := utils.RunWithIsolatedCache(t, binaryPath, testDir, tc.args...)
 
 			t.Logf("CLI output:\n%s", string(output))
 

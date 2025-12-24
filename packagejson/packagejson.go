@@ -138,6 +138,8 @@ func extractDependencyMap(deps any) map[string]string {
 type PackageJSONParser struct {
 	Config                *config.Config
 	LockFileName          string
+	PackageJSONRoot       *PackageJSON
+	OriginalContentRoot   []byte
 	PackageJSON           *PackageJSON
 	PackageLock           *PackageLock
 	FilePath              string
@@ -200,9 +202,15 @@ func (p *PackageJSONParser) Parse(filePath string) (*PackageJSON, error) {
 		return nil, fmt.Errorf("failed to parse JSON from file %s: %w", filePath, err)
 	}
 
-	p.PackageJSON = &packageJSON
+	if filePath == "package.json" {
+		p.PackageJSONRoot = &packageJSON
+		p.OriginalContentRoot = fileContent
+	} else {
+		p.PackageJSON = &packageJSON
+		p.OriginalContent = fileContent
+
+	}
 	p.FilePath = filePath
-	p.OriginalContent = fileContent
 
 	lockFileContent, err := os.ReadFile(p.LockFileName)
 	if err == nil {
@@ -336,24 +344,27 @@ func (p *PackageJSONParser) resolveVersionMismatch(existingLock *PackageLock, ke
 }
 
 func (p *PackageJSONParser) AddOrUpdateDependency(name string, version string) error {
-	if p.PackageJSON == nil {
+	if p.PackageJSONRoot == nil {
 		return fmt.Errorf("package.json not loaded, call Parse() first")
 	}
 
-	if p.FilePath == "" {
-		return fmt.Errorf("file path not set, call Parse() first")
-	}
-
-	if p.OriginalContent == nil {
+	if p.OriginalContentRoot == nil {
 		return fmt.Errorf("original content not cached, call Parse() first")
 	}
 
-	deps := p.PackageJSON.GetDependencies()
+	deps := p.PackageJSONRoot.GetDependencies()
+
+	if version == "" || version == "latest" {
+		if existingVersion, exists := p.PackageLock.Packages[name]; exists {
+			version = existingVersion.Resolved
+		}
+	}
+
 	deps[name] = version
-	p.PackageJSON.Dependencies = deps
+	p.PackageJSONRoot.Dependencies = deps
 
 	// Check if dependency already exists (using cached content)
-	jsonStr := string(p.OriginalContent)
+	jsonStr := string(p.OriginalContentRoot)
 	existingValue := gjson.Get(jsonStr, "dependencies."+name)
 	isNewDependency := !existingValue.Exists()
 
@@ -372,12 +383,12 @@ func (p *PackageJSONParser) AddOrUpdateDependency(name string, version string) e
 	}
 
 	// Write back to file
-	if err := os.WriteFile(p.FilePath, []byte(jsonStr), 0644); err != nil {
+	if err := os.WriteFile("package.json", []byte(jsonStr), 0644); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", p.FilePath, err)
 	}
 
 	// Update cached content for subsequent calls
-	p.OriginalContent = []byte(jsonStr)
+	p.OriginalContentRoot = []byte(jsonStr)
 
 	return nil
 }

@@ -633,7 +633,15 @@ func (pm *PackageManager) Add(pkgName string, version string, isInstall bool) er
 		return err
 	}
 
-	err = pm.packageJsonParse.AddOrUpdateDependency(pkgName, version)
+	// Resolve version from lock file if not specified
+	resolvedVersion := version
+	if (version == "" || version == "latest") && pm.packageLock != nil {
+		if lockVersion, ok := pm.packageLock.Dependencies[pkgName]; ok {
+			resolvedVersion = lockVersion
+		}
+	}
+
+	err = pm.packageJsonParse.AddOrUpdateDependency(pkgName, resolvedVersion)
 	if err != nil {
 		return err
 	}
@@ -644,6 +652,14 @@ func (pm *PackageManager) Add(pkgName string, version string, isInstall bool) er
 	}
 
 	pm.packageLock = pm.packageJsonParse.PackageLock
+
+	// Install packages from cache to node_modules (unless called from install command)
+	if !isInstall {
+		err = pm.InstallFromCache()
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -679,7 +695,6 @@ func (pm *PackageManager) Remove(pkg string, removeFromPackageJson bool) error {
 
 func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isProduction bool) error {
 	queue := make([]QueueItem, 0)
-
 
 	for name, version := range packageJson.GetDependencies() {
 		dep := packagejson.Dependency{Name: name, Version: version}
@@ -958,7 +973,6 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 
 				packageKey := actualName + "@" + version
 
-	
 				// Check platform compatibility for optional dependencies
 				if item.IsOptional {
 					if versionData, ok := npmPackage.Versions[version]; ok {
@@ -1131,6 +1145,15 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				}
 				packageLock.Packages[packageResolved] = pckItem
 				pm.progress.SetStatus(fmt.Sprintf("↓ %s@%s", item.Dep.Name, version))
+
+				// Update Dependencies/DevDependencies with resolved version for top-level packages
+				if item.ParentName == "package.json" {
+					if item.IsDev {
+						packageLock.DevDependencies[item.Dep.Name] = "^" + version
+					} else if !item.IsOptional && !item.IsPeer {
+						packageLock.Dependencies[item.Dep.Name] = "^" + version
+					}
+				}
 
 				// Add to OptionalDependencies in lock if this is a top-level optional dependency
 				if item.IsOptional && item.ParentName == "package.json" {
