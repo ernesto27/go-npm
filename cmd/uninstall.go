@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/ernesto27/go-npm/manager"
 
+	"github.com/ernesto27/go-npm/manager"
+	"github.com/ernesto27/go-npm/types"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +24,10 @@ func init() {
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
-	deps, err := manager.BuildDependencies(getVersion(), false)
+	opts := types.BuildOptions{
+		Version: getVersion(),
+	}
+	deps, err := manager.BuildDependencies(opts)
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}

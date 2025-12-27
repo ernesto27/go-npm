@@ -104,6 +104,70 @@ func TestInstallCLI(t *testing.T) {
 					"verbose output should show package download status")
 			},
 		},
+		{
+			name: "skips lifecycle scripts with --ignore-scripts flag",
+			setupFunc: func(t *testing.T, testDir string) {
+				packageJSON := `{
+					"name": "test-project",
+					"version": "1.0.0",
+					"scripts": {
+						"postinstall": "echo POSTINSTALL_RAN > .postinstall-marker"
+					},
+					"dependencies": {
+						"is-odd": "3.0.1"
+					}
+				}`
+				err := os.WriteFile(filepath.Join(testDir, "package.json"), []byte(packageJSON), 0644)
+				require.NoError(t, err)
+			},
+			args:        []string{"install", "--ignore-scripts"},
+			expectError: false,
+			validate: func(t *testing.T, testDir string, cacheDir string, output string) {
+				assert.DirExists(t, filepath.Join(testDir, "node_modules", "is-odd"),
+					"is-odd should be installed in node_modules")
+				assert.NoFileExists(t, filepath.Join(testDir, ".postinstall-marker"),
+					"postinstall script should NOT run with --ignore-scripts")
+				assert.NotContains(t, output, "$ echo POSTINSTALL_RAN",
+					"output should not show script execution")
+			},
+		},
+		{
+			name: "runs lifecycle scripts successfully",
+			setupFunc: func(t *testing.T, testDir string) {
+				packageJSON := `{
+					"name": "test-project",
+					"version": "1.0.0",
+					"scripts": {
+						"preinstall": "echo PREINSTALL > .preinstall-marker",
+						"postinstall": "echo POSTINSTALL > .postinstall-marker",
+						"prepare": "echo PREPARE > .prepare-marker"
+					},
+					"dependencies": {
+						"is-odd": "3.0.1"
+					}
+				}`
+				err := os.WriteFile(filepath.Join(testDir, "package.json"), []byte(packageJSON), 0644)
+				require.NoError(t, err)
+			},
+			args:        []string{"install"},
+			expectError: false,
+			validate: func(t *testing.T, testDir string, cacheDir string, output string) {
+				assert.DirExists(t, filepath.Join(testDir, "node_modules", "is-odd"),
+					"is-odd should be installed in node_modules")
+				assert.FileExists(t, filepath.Join(testDir, ".preinstall-marker"),
+					"preinstall script should run")
+				assert.FileExists(t, filepath.Join(testDir, ".postinstall-marker"),
+					"postinstall script should run")
+				assert.FileExists(t, filepath.Join(testDir, ".prepare-marker"),
+					"prepare script should run")
+				assert.Contains(t, output, "$ echo PREINSTALL",
+					"output should show preinstall script execution")
+				assert.Contains(t, output, "$ echo POSTINSTALL",
+					"output should show postinstall script execution")
+				assert.Contains(t, output, "$ echo PREPARE",
+					"output should show prepare script execution")
+			},
+		},
 	}
 
 	for _, tc := range testCases {

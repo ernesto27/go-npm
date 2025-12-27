@@ -52,6 +52,7 @@ type PackageJSON struct {
 	Exports              any                 `json:"exports"`
 	Private              bool                `json:"private"`
 	Workspaces           any                 `json:"workspaces"`
+	TrustedDependencies  []string            `json:"trustedDependencies"`
 }
 
 type Funding struct {
@@ -111,6 +112,13 @@ func (p *PackageJSON) GetWorkspaces() []string {
 	}
 
 	return []string{}
+}
+
+func (p *PackageJSON) GetTrustedDependencies() []string {
+	if p.TrustedDependencies == nil {
+		return []string{}
+	}
+	return p.TrustedDependencies
 }
 
 func extractDependencyMap(deps any) map[string]string {
@@ -181,6 +189,7 @@ type PackageItem struct {
 	Engines              any                 `json:"engines,omitempty"`
 	OS                   []string            `json:"os,omitempty"`
 	CPU                  []string            `json:"cpu,omitempty"`
+	Scripts              map[string]string   `json:"scripts,omitempty"`
 }
 
 func NewPackageJSONParser(cfg *config.Config, yarnParser *yarnlock.YarnLockParser) *PackageJSONParser {

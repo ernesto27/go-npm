@@ -17,7 +17,9 @@ import (
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
 	"github.com/ernesto27/go-npm/progress"
+	"github.com/ernesto27/go-npm/scripts"
 	"github.com/ernesto27/go-npm/tarball"
+	"github.com/ernesto27/go-npm/types"
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
 	"github.com/ernesto27/go-npm/workspace"
@@ -64,6 +66,7 @@ type PackageManager struct {
 	downloadLocks     map[string]*sync.Mutex
 	progress          *progress.Progress
 	version           string
+	lifecycleManager  *scripts.LifecycleManager
 }
 
 type Package struct {
@@ -87,6 +90,7 @@ type Dependencies struct {
 	PackageJsonParse  *packagejson.PackageJSONParser
 	BinLinker         *binlink.BinLinker
 	Progress          *progress.Progress
+	LifecycleManager  *scripts.LifecycleManager
 }
 
 type QueueItem struct {
@@ -176,7 +180,7 @@ func parseGitHubDependency(version string) (*GitHubDependency, bool) {
 	}, true
 }
 
-func BuildDependencies(appVersion string, verbose bool) (*Dependencies, error) {
+func BuildDependencies(opts types.BuildOptions) (*Dependencies, error) {
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config: %w", err)
@@ -203,7 +207,8 @@ func BuildDependencies(appVersion string, verbose bool) (*Dependencies, error) {
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
-		Progress:          progress.New(appVersion, verbose),
+		Progress:          progress.New(opts.Version, opts.Verbose),
+		LifecycleManager:  scripts.NewLifecycleManager(cfg.LocalNodeModules, opts.IgnoreScripts),
 	}, nil
 }
 
@@ -229,6 +234,7 @@ func New(deps *Dependencies) (*PackageManager, error) {
 		binLinker:         deps.BinLinker,
 		downloadLocks:     make(map[string]*sync.Mutex),
 		progress:          deps.Progress,
+		lifecycleManager:  deps.LifecycleManager,
 	}, nil
 }
 
@@ -290,6 +296,8 @@ func (pm *PackageManager) ParsePackageJSON(isProduction bool) error {
 	if err != nil {
 		return err
 	}
+
+	pm.lifecycleManager.SetTrustedDependencies(data.GetTrustedDependencies())
 
 	// Discover workspaces first (needed for both fresh and incremental installs)
 	if len(data.GetWorkspaces()) > 0 {
@@ -563,6 +571,11 @@ func (pm *PackageManager) InstallFromCache() error {
 				errChan <- err
 				return
 			}
+
+			if err := pm.lifecycleManager.RunPackageScripts(pkgName, item.Version, targetPath, item.Scripts); err != nil {
+				errChan <- err
+				return
+			}
 		}(name, item)
 	}
 
@@ -575,6 +588,25 @@ func (pm *PackageManager) InstallFromCache() error {
 
 	if err := pm.binLinker.LinkAllPackages(); err != nil {
 		return fmt.Errorf("failed to link bin executables: %w", err)
+	}
+
+	rootPkgJSON, err := pm.packageJsonParse.ParseDefault()
+	if err == nil {
+		workDir, _ := os.Getwd()
+		version := ""
+		if v, ok := rootPkgJSON.Version.(string); ok {
+			version = v
+		}
+
+		fmt.Println()
+
+		if err := pm.lifecycleManager.RunRootPackageScripts(rootPkgJSON.Name, version, workDir, rootPkgJSON.Scripts); err != nil {
+			return fmt.Errorf("root package scripts failed: %w", err)
+		}
+
+		if err := pm.lifecycleManager.RunPrepare(rootPkgJSON.Name, version, workDir, rootPkgJSON.Scripts); err != nil {
+			return fmt.Errorf("root package prepare script failed: %w", err)
+		}
 	}
 
 	pm.progress.Finish()
@@ -1149,9 +1181,9 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				// Update Dependencies/DevDependencies with resolved version for top-level packages
 				if item.ParentName == "package.json" {
 					if item.IsDev {
-						packageLock.DevDependencies[item.Dep.Name] = "^" + version
+						packageLock.DevDependencies[item.Dep.Name] = version
 					} else if !item.IsOptional && !item.IsPeer {
-						packageLock.Dependencies[item.Dep.Name] = "^" + version
+						packageLock.Dependencies[item.Dep.Name] = version
 					}
 				}
 
@@ -1203,6 +1235,12 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 					return
 				}
+
+				mapMutex.Lock()
+				pkgItem := packageLock.Packages[packageResolved]
+				pkgItem.Scripts = data.Scripts
+				packageLock.Packages[packageResolved] = pkgItem
+				mapMutex.Unlock()
 
 				mapMutex.Lock()
 				currentPkgName := extractPackageName(packageResolved)

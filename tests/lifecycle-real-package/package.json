@@ -1,0 +1,15 @@
+{
+  "name": "lifecycle-test",
+  "version": "1.0.0",
+  "description": "Test lifecycle scripts with real npm packages",
+  "scripts": {
+    "preinstall": "node -e \"console.log('✓ PREINSTALL EXECUTED'); require('fs').writeFileSync('.preinstall-marker', 'preinstall-success')\"",
+    "postinstall": "node -e \"console.log('✓ POSTINSTALL EXECUTED'); require('fs').writeFileSync('.postinstall-marker', 'postinstall-success')\"",
+    "prepare": "node -e \"console.log('✓ PREPARE EXECUTED'); require('fs').writeFileSync('.prepare-marker', 'prepare-success')\""
+  },
+  "dependencies": {
+    "esbuild": "^0.27.2",
+    "sharp": "^0.33.0"
+  },
+  "trustedDependencies": ["esbuild", "sharp"]
+}

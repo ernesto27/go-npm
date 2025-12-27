@@ -5,13 +5,15 @@ import (
 	"strings"
 
 	"github.com/ernesto27/go-npm/manager"
+	"github.com/ernesto27/go-npm/types"
 	"github.com/spf13/cobra"
 )
 
 var (
-	globalFlag     bool
-	productionFlag bool
-	verboseFlag    bool
+	globalFlag       bool
+	productionFlag   bool
+	verboseFlag      bool
+	ignoreScriptsFlag bool
 )
 
 var installCmd = &cobra.Command{
@@ -27,6 +29,7 @@ func init() {
 	installCmd.Flags().BoolVarP(&globalFlag, "global", "g", false, "Install package globally")
 	installCmd.Flags().BoolVar(&productionFlag, "production", false, "Install only production dependencies")
 	installCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "Show verbose output with all installed packages")
+	installCmd.Flags().BoolVar(&ignoreScriptsFlag, "ignore-scripts", false, "Skip running lifecycle scripts")
 }
 
 func parsePackageArg(pkgArg string) (string, string) {
@@ -40,7 +43,12 @@ func parsePackageArg(pkgArg string) (string, string) {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	deps, err := manager.BuildDependencies(getVersion(), verboseFlag)
+	opts := types.BuildOptions{
+		Version:       getVersion(),
+		Verbose:       verboseFlag,
+		IgnoreScripts: ignoreScriptsFlag,
+	}
+	deps, err := manager.BuildDependencies(opts)
 	if err != nil {
 		return fmt.Errorf("error building dependencies: %w", err)
 	}
