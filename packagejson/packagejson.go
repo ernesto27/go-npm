@@ -519,11 +519,11 @@ func (p *PackageJSONParser) ResolveDependenciesToRemove(pkg string) []string {
 }
 
 func (p *PackageJSONParser) RemoveDependencies(pkg string) error {
-	if p.PackageJSON == nil {
+	if p.PackageJSONRoot == nil {
 		return fmt.Errorf("package.json not loaded, call Parse() first")
 	}
 
-	deps := p.PackageJSON.GetDependencies()
+	deps := p.PackageJSONRoot.GetDependencies()
 	if len(deps) == 0 {
 		return fmt.Errorf("no dependencies found in package.json")
 	}
@@ -533,20 +533,20 @@ func (p *PackageJSONParser) RemoveDependencies(pkg string) error {
 		return fmt.Errorf("dependency '%s' not found in package.json", pkg)
 	}
 
-	jsonStr := string(p.OriginalContent)
+	jsonStr := string(p.OriginalContentRoot)
 	var err error
 	jsonStr, err = sjson.Delete(jsonStr, "dependencies."+pkg)
 	if err != nil {
 		return fmt.Errorf("failed to remove dependency from package.json: %w", err)
 	}
 
-	if err := os.WriteFile(p.FilePath, []byte(jsonStr), 0644); err != nil {
-		return fmt.Errorf("failed to write file %s: %w", p.FilePath, err)
+	if err := os.WriteFile("package.json", []byte(jsonStr), 0644); err != nil {
+		return fmt.Errorf("failed to write file package.json: %w", err)
 	}
 
 	delete(deps, pkg)
-	p.PackageJSON.Dependencies = deps
-	p.OriginalContent = []byte(jsonStr)
+	p.PackageJSONRoot.Dependencies = deps
+	p.OriginalContentRoot = []byte(jsonStr)
 
 	return nil
 }
@@ -648,7 +648,7 @@ func (p *PackageJSONParser) MigrateFromYarnLock() error {
 // convertYarnToPackageLock converts YarnLock to PackageLock format
 func (p *PackageJSONParser) convertYarnToPackageLock(yarnLock *yarnlock.YarnLock) *PackageLock {
 	packageLock := &PackageLock{
-		Name:            p.PackageJSON.Name,
+		Name:            p.PackageJSONRoot.Name,
 		LockfileVersion: 3,
 		Requires:        true,
 		Packages:        make(map[string]PackageItem),
@@ -656,13 +656,13 @@ func (p *PackageJSONParser) convertYarnToPackageLock(yarnLock *yarnlock.YarnLock
 	}
 
 	// Get top-level dependencies from package.json
-	if p.PackageJSON != nil {
-		deps := p.PackageJSON.GetDependencies()
+	if p.PackageJSONRoot != nil {
+		deps := p.PackageJSONRoot.GetDependencies()
 		for name, version := range deps {
 			packageLock.Dependencies[name] = version
 		}
 
-		devDeps := p.PackageJSON.GetDevDependencies()
+		devDeps := p.PackageJSONRoot.GetDevDependencies()
 		if len(devDeps) > 0 {
 			packageLock.DevDependencies = make(map[string]string)
 			for name, version := range devDeps {
@@ -670,7 +670,7 @@ func (p *PackageJSONParser) convertYarnToPackageLock(yarnLock *yarnlock.YarnLock
 			}
 		}
 
-		optDeps := p.PackageJSON.GetOptionalDependencies()
+		optDeps := p.PackageJSONRoot.GetOptionalDependencies()
 		if len(optDeps) > 0 {
 			packageLock.OptionalDependencies = make(map[string]string)
 			for name, version := range optDeps {
