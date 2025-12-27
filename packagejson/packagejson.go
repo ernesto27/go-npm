@@ -406,7 +406,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 	toInstall = []Dependency{}
 	toRemove = []Dependency{}
 
-	for name, versionInJSON := range p.PackageJSON.GetDependencies() {
+	for name, versionInJSON := range p.PackageJSONRoot.GetDependencies() {
 		versionInLock, exists := p.PackageLock.Dependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -416,7 +416,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 		}
 	}
 
-	for name, versionInJSON := range p.PackageJSON.GetDevDependencies() {
+	for name, versionInJSON := range p.PackageJSONRoot.GetDevDependencies() {
 		versionInLock, exists := p.PackageLock.DevDependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -426,7 +426,7 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 		}
 	}
 
-	for name, versionInJSON := range p.PackageJSON.GetOptionalDependencies() {
+	for name, versionInJSON := range p.PackageJSONRoot.GetOptionalDependencies() {
 		versionInLock, exists := p.PackageLock.OptionalDependencies[name]
 		if !exists || versionInJSON != versionInLock {
 			toInstall = append(toInstall, Dependency{
@@ -437,9 +437,9 @@ func (p *PackageJSONParser) ResolveDependencies() (toInstall []Dependency, toRem
 	}
 
 	for name, versionInLock := range p.PackageLock.Dependencies {
-		deps := p.PackageJSON.GetDependencies()
-		devDeps := p.PackageJSON.GetDevDependencies()
-		optionalDeps := p.PackageJSON.GetOptionalDependencies()
+		deps := p.PackageJSONRoot.GetDependencies()
+		devDeps := p.PackageJSONRoot.GetDevDependencies()
+		optionalDeps := p.PackageJSONRoot.GetOptionalDependencies()
 
 		_, existsInDeps := deps[name]
 		_, existsInDevDeps := devDeps[name]
