@@ -28,9 +28,7 @@ type Config struct {
 func New() (*Config, error) {
 	// Allow overriding base directory via environment variable (useful for testing)
 	baseDir := os.Getenv("GO_NPM_HOME")
-	fmt.Println("baseDIR: ", baseDir)
 	if baseDir == "" {
-		fmt.Println("home dir")
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err

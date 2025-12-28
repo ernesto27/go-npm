@@ -1,0 +1,11 @@
+{
+  "name": "run-command-test",
+  "version": "1.0.0",
+  "scripts": {
+    "greet": "echo 'Hello from go-npm run!'",
+    "testjest": "jest --version"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+,"dependencies":{"jest":"^29.0.0"}}
