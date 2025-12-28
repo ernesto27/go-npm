@@ -1181,9 +1181,9 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 				// Update Dependencies/DevDependencies with resolved version for top-level packages
 				if item.ParentName == "package.json" {
 					if item.IsDev {
-						packageLock.DevDependencies[item.Dep.Name] = version
+						packageLock.DevDependencies[item.Dep.Name] = item.Dep.Version
 					} else if !item.IsOptional && !item.IsPeer {
-						packageLock.Dependencies[item.Dep.Name] = version
+						packageLock.Dependencies[item.Dep.Name] = item.Dep.Version
 					}
 				}
 
