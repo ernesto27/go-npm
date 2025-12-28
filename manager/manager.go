@@ -2,6 +2,7 @@ package manager
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"github.com/ernesto27/go-npm/config"
 	"github.com/ernesto27/go-npm/etag"
 	"github.com/ernesto27/go-npm/extractor"
+	"github.com/ernesto27/go-npm/integrity"
 	manifestpkg "github.com/ernesto27/go-npm/manifest"
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
@@ -1125,8 +1127,24 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					}
 
 					if shouldDownloadTarball {
-						err = pm.tarball.DownloadAs(tarballURL, uniqueTarballName)
+						if isGitHubDep {
+							// GitHub deps skip integrity validation (HTTPS provides integrity)
+							err = pm.tarball.DownloadAs(tarballURL, uniqueTarballName)
+						} else {
+							// npm packages: validate integrity hash (strict mode)
+							var integrityHash string
+							if versionData, ok := npmPackage.Versions[version]; ok {
+								integrityHash = versionData.Dist.Integrity
+							}
+							err = pm.tarball.DownloadAndValidate(tarballURL, uniqueTarballName, integrityHash)
+						}
 						if err != nil {
+							// Handle integrity errors with clear security message
+							if errors.Is(err, integrity.ErrIntegrityMismatch) {
+								err = fmt.Errorf("SECURITY: integrity check failed for %s@%s: %w", actualName, version, err)
+							} else if errors.Is(err, integrity.ErrNoIntegrity) {
+								err = fmt.Errorf("SECURITY: no integrity hash available for %s@%s (strict mode)", actualName, version)
+							}
 							if item.IsOptional || item.IsPeerOptional {
 								fmt.Printf("Warning: Optional dependency %s failed to download tarball: %v\n", item.Dep.Name, err)
 								return
@@ -1164,7 +1182,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 					Etag:     currentEtag,
 					Optional: item.IsOptional,
 				}
-				// Add OS and CPU fields if available (npm packages only)
+				// Add OS, CPU, and Integrity fields if available (npm packages only)
 				if !isGitHubDep {
 					if versionData, ok := npmPackage.Versions[version]; ok {
 						if len(versionData.OS) > 0 {
@@ -1172,6 +1190,9 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						}
 						if len(versionData.CPU) > 0 {
 							pckItem.CPU = versionData.CPU
+						}
+						if versionData.Dist.Integrity != "" {
+							pckItem.Integrity = versionData.Dist.Integrity
 						}
 					}
 				}
