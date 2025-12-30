@@ -10,7 +10,7 @@ import (
 func createTestPackage(versions []string, latest string) *manifest.NPMPackage {
 	pkg := &manifest.NPMPackage{
 		DistTags: manifest.DistTags{
-			Latest: latest,
+			"latest": latest,
 		},
 		Versions: make(map[string]manifest.Version),
 	}

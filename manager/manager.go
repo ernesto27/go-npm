@@ -18,6 +18,7 @@ import (
 	manifestpkg "github.com/ernesto27/go-npm/manifest"
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
+	"github.com/ernesto27/go-npm/parsejson"
 	"github.com/ernesto27/go-npm/progress"
 	"github.com/ernesto27/go-npm/scripts"
 	"github.com/ernesto27/go-npm/tarball"
@@ -28,7 +29,7 @@ import (
 	"github.com/ernesto27/go-npm/yarnlock"
 )
 
-const npmRegistryURL = "https://registry.npmjs.org/"
+const npmRegistryURL = config.NPMRegistryURL
 
 type Job struct {
 	Dependency packagejson.Dependency
@@ -59,7 +60,7 @@ type PackageManager struct {
 	tarball           *tarball.Tarball
 	extractor         *extractor.TGZExtractor
 	packageCopy       *packagecopy.PackageCopy
-	parseJsonManifest *ParseJsonManifest
+	parseJsonManifest *parsejson.Parser
 	versionInfo       *version.Info
 	packageJsonParse  *packagejson.PackageJSONParser
 	binLinker         *binlink.BinLinker
@@ -87,7 +88,7 @@ type Dependencies struct {
 	Tarball           *tarball.Tarball
 	Extractor         *extractor.TGZExtractor
 	PackageCopy       *packagecopy.PackageCopy
-	ParseJsonManifest *ParseJsonManifest
+	ParseJsonManifest *parsejson.Parser
 	VersionInfo       *version.Info
 	PackageJsonParse  *packagejson.PackageJSONParser
 	BinLinker         *binlink.BinLinker
@@ -205,7 +206,7 @@ func BuildDependencies(opts types.BuildOptions) (*Dependencies, error) {
 		Tarball:           tarball.NewTarball(cfg.TarballDir),
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
-		ParseJsonManifest: newParseJsonManifest(),
+		ParseJsonManifest: parsejson.New(),
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),
@@ -986,7 +987,7 @@ func (pm *PackageManager) fetchToCache(packageJson packagejson.PackageJSON, isPr
 						}
 					}
 
-					npmPackage, err = pm.parseJsonManifest.parse(manifestPath)
+					npmPackage, err = pm.parseJsonManifest.Parse(manifestPath)
 					pkgLock.Unlock()
 
 					if err != nil {
@@ -1430,7 +1431,7 @@ func (pm *PackageManager) validatePeerDependencies(packageLock *packagejson.Pack
 				Versions: map[string]manifestpkg.Version{
 					installedVersion: {Version: installedVersion},
 				},
-				DistTags: manifestpkg.DistTags{Latest: installedVersion},
+				DistTags: manifestpkg.DistTags{"latest": installedVersion},
 			}
 
 			resolvedVersion := pm.versionInfo.GetVersion(peerVersionConstraint, npmPackage)

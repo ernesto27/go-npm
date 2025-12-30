@@ -1,6 +1,10 @@
 package manager
 
 import (
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/ernesto27/go-npm/binlink"
 	"github.com/ernesto27/go-npm/config"
 	"github.com/ernesto27/go-npm/etag"
@@ -8,16 +12,13 @@ import (
 	"github.com/ernesto27/go-npm/manifest"
 	"github.com/ernesto27/go-npm/packagecopy"
 	"github.com/ernesto27/go-npm/packagejson"
+	"github.com/ernesto27/go-npm/parsejson"
 	"github.com/ernesto27/go-npm/progress"
 	"github.com/ernesto27/go-npm/scripts"
 	"github.com/ernesto27/go-npm/tarball"
 	"github.com/ernesto27/go-npm/utils"
 	"github.com/ernesto27/go-npm/version"
 	"github.com/ernesto27/go-npm/yarnlock"
-	"os"
-	"path/filepath"
-	"testing"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,7 +55,7 @@ func createMockDependencies(t *testing.T, baseDir string) *Dependencies {
 		Tarball:           tarball.NewTarball(cfg.TarballDir),
 		Extractor:         extractor.NewTGZExtractor(),
 		PackageCopy:       packagecopy.NewPackageCopy(),
-		ParseJsonManifest: newParseJsonManifest(),
+		ParseJsonManifest: parsejson.New(),
 		VersionInfo:       version.New(),
 		PackageJsonParse:  packagejson.NewPackageJSONParser(cfg, yarnlock.NewYarnLockParser()),
 		BinLinker:         binlink.NewBinLinker(cfg.LocalNodeModules),

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 )
 
+const NPMRegistryURL = "https://registry.npmjs.org/"
+
 type Config struct {
 	// Base directories
 	BaseDir     string

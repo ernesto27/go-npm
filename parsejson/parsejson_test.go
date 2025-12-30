@@ -1,7 +1,6 @@
-package manager
+package parsejson
 
 import (
-	"github.com/ernesto27/go-npm/manifest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,13 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseJsonManifestParse(t *testing.T) {
+func TestParserParse(t *testing.T) {
 	testCases := []struct {
 		name        string
 		setup       func(*testing.T) string
 		expectErr   bool
 		errContains string
-		assertPkg   func(*testing.T, *manifest.NPMPackage)
+		validate    func(*testing.T, string)
 	}{
 		{
 			name: "valid manifest",
@@ -31,9 +30,12 @@ func TestParseJsonManifestParse(t *testing.T) {
 
 				return filePath
 			},
-			assertPkg: func(t *testing.T, pkg *manifest.NPMPackage) {
+			validate: func(t *testing.T, filePath string) {
+				parser := New()
+				pkg, err := parser.Parse(filePath)
+				assert.NoError(t, err)
 				assert.Equal(t, "example", pkg.Name)
-				assert.Equal(t, "1.0.0", pkg.DistTags.Latest)
+				assert.Equal(t, "1.0.0", pkg.DistTags["latest"])
 
 				if assert.Contains(t, pkg.Versions, "1.0.0") {
 					assert.Equal(t, "https://example.com/example-1.0.0.tgz", pkg.Versions["1.0.0"].Dist.Tarball)
@@ -69,10 +71,10 @@ func TestParseJsonManifestParse(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			parser := newParseJsonManifest()
+			parser := New()
 			filePath := tc.setup(t)
 
-			pkg, err := parser.parse(filePath)
+			pkg, err := parser.Parse(filePath)
 
 			if tc.expectErr {
 				assert.Error(t, err)
@@ -84,10 +86,9 @@ func TestParseJsonManifestParse(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
-			if assert.NotNil(t, pkg) && tc.assertPkg != nil {
-				tc.assertPkg(t, pkg)
+			if assert.NotNil(t, pkg) && tc.validate != nil {
+				tc.validate(t, filePath)
 			}
 		})
 	}
 }
-

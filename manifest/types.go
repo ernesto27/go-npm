@@ -21,10 +21,9 @@ type NPMPackage struct {
 	Users          map[string]bool `json:"users"`
 }
 
-type DistTags struct {
-	Latest string `json:"latest"`
-	Next   string `json:"next"`
-}
+// DistTags is a dynamic map that captures all dist-tags from the npm registry
+// (e.g., latest, next, beta, rc, canary, experimental)
+type DistTags map[string]string
 
 type Version struct {
 	Name                   string                 `json:"name"`

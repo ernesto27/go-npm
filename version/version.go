@@ -21,12 +21,12 @@ func New() *Info {
 func (v *Info) GetVersion(version string, npmPackage *manifest.NPMPackage) string {
 	// Handle empty version or "latest" keyword
 	if version == "" || version == "latest" || version == "*" {
-		return npmPackage.DistTags.Latest
+		return npmPackage.DistTags["latest"]
 	}
 
 	// Check if version is a known dist-tag
-	if version == "next" && npmPackage.DistTags.Next != "" {
-		return npmPackage.DistTags.Next
+	if version == "next" && npmPackage.DistTags["next"] != "" {
+		return npmPackage.DistTags["next"]
 	}
 
 	// Try to parse as semver constraint
@@ -37,7 +37,7 @@ func (v *Info) GetVersion(version string, npmPackage *manifest.NPMPackage) strin
 			return versionObj.Version
 		}
 		// Fallback to latest for invalid constraints
-		return npmPackage.DistTags.Latest
+		return npmPackage.DistTags["latest"]
 	}
 
 	// Filter versions that match the constraint
@@ -54,7 +54,7 @@ func (v *Info) GetVersion(version string, npmPackage *manifest.NPMPackage) strin
 
 	// If no versions match, fallback to latest
 	if len(matchingVersions) == 0 {
-		return npmPackage.DistTags.Latest
+		return npmPackage.DistTags["latest"]
 	}
 
 	// Sort versions and return the highest
